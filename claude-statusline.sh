@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Claude Code statusLine — 3-line status bar
+# Claude Code statusLine — 3-line or 1-line status bar
+# Usage: bash statusline.sh          → 3-line (default)
+#        bash statusline.sh lite     → 1-line
 # https://github.com/gencrewai/aiops
 set -u
+MODE="${1:-full}"
 input=$(cat)
 
 # --- color constants (use $'...' for real ESC) ---
@@ -206,4 +209,20 @@ L3="${L3}${DIM}7d${RST} ${seven_remain_color}${seven_remain_bar} ${seven_remain}
 L3="${L3}${SEP}"
 L3="${L3}📦 ${GREEN}${cache_pct}%${RST}"
 
-printf '%s\n%s\n%s' "$L1" "$L2" "$L3"
+# --- output ---
+if [ "$MODE" = "lite" ]; then
+  # 1-line: folder │ branch │ model │ 5h remain │ 7d remain
+  LITE=""
+  LITE="${LITE}📁 ${BLUE}${project_name}${RST}"
+  LITE="${LITE}${SEP}"
+  LITE="${LITE}${YELLOW}${git_branch}${RST}"
+  LITE="${LITE}${SEP}"
+  LITE="${LITE}${BOLD}${CYAN}${model_short}${RST}"
+  LITE="${LITE}${SEP}"
+  LITE="${LITE}${DIM}5h${RST} ${five_remain_color}${five_remain}%${RST}"
+  LITE="${LITE}${SEP}"
+  LITE="${LITE}${DIM}7d${RST} ${seven_remain_color}${seven_remain}%${RST}"
+  printf '%s' "$LITE"
+else
+  printf '%s\n%s\n%s' "$L1" "$L2" "$L3"
+fi
