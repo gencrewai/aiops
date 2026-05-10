@@ -8,19 +8,22 @@ Opus 4.6 │ ██████░░░░ 58% │ 234K/200K │ 💰 $1.23
 ctx ████████ 42% │ 5h ██████░░ 72% │ 7d █████░░░ 65% │ 📦 89%
 ```
 
-## What it shows
+## What it shows / 표시 항목
 
 **Line 1** — Model, context usage bar, token count, session cost
+- 모델명, 컨텍스트 사용량 바, 토큰 수, 세션 비용
 
 **Line 2** — Project folder, git branch + hash, session duration, 5h reset timer, lines changed
+- 프로젝트 폴더, git 브랜치 + 커밋 해시, 세션 경과 시간, 5시간 리셋 타이머, 변경 줄 수
 
 **Line 3** — Remaining capacity bars (context window, 5-hour rate limit, 7-day rate limit), prompt cache hit rate
+- 남은 용량 바 (컨텍스트 윈도우, 5시간 제한, 7일 제한), 프롬프트 캐시 적중률
 
-### Color coding
+### Color coding / 색상 의미
 
-- Green: plenty of room (>60% remaining)
-- Yellow: getting used (30-60% remaining)
-- Red: running low (<30% remaining)
+- 🟢 Green / 초록: 여유 (60% 이상 남음)
+- 🟡 Yellow / 노랑: 주의 (30~60% 남음)
+- 🔴 Red / 빨강: 부족 (30% 미만 남음)
 
 ## Install
 
