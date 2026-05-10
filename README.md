@@ -1,127 +1,214 @@
-# aiops — CLI Status Bars
+[English](./README.en.md)
 
-Status bars for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [Codex CLI](https://github.com/openai/codex).
+# aiops - CLI 상태 바
 
-## Claude Code — status bar (full / lite)
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code)와 [Codex CLI](https://github.com/openai/codex)를 위한 상태 바입니다.
 
-Two modes available:
+---
 
-### Full mode (3-line, default)
+## Claude Code - 상태 바 (full / lite)
 
+두 가지 모드와 옵션 플래그를 지원합니다.
+
+| 옵션 | 설명 |
+|------|------|
+| (기본) | Full 모드 (3줄), 사용량 바 |
+| `lite` | Lite 모드 (1줄) |
+| `--left` | 남은 용량 바로 전환 |
+| `--soft` | 파스텔 아이스크림 색상 |
+
+옵션은 자유롭게 조합 가능합니다: `lite --left --soft`
+
+### Full 모드 (3줄, 기본)
+
+```text
+Opus 4.6 │ In:180K Out:54K │ 234K/200K │ $1.23
+my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12
+ctx █████░░░ 58% │ 5h █████░░░ 72%(3h42m) │ 7d █████░░░ 65% │ cache 89%
 ```
-Opus 4.6 │ ██████░░░░ 58% │ 234K/200K │ 💰 $1.23
-📁 my-project │ main a1b2c3d │ 12m30s │ ⏳ ~3h42m │ +45 -12
-ctx ████████ 42% │ 5h ██████░░ 72% │ 7d █████░░░ 65% │ 📦 89%
+
+- `1줄`: 모델, 입력/출력 토큰 수, 총 토큰/컨텍스트 크기, 세션 비용
+- `2줄`: 프로젝트 폴더, git 브랜치 + 커밋 해시, 세션 시간, 변경 라인 수
+- `3줄`: 사용량 바(`ctx`, `5h`, `7d`), 5시간 리셋까지 남은 시간, 프롬프트 캐시 적중률
+
+`--left` 플래그 사용 시 3줄이 남은 용량 표시로 전환됩니다:
+
+```text
+ctx left ███░░░░░ 42% │ 5h left ██░░░░░░ 28%(3h42m) │ 7d left ██░░░░░░ 35% │ cache 89%
 ```
 
-**Line 1** — Model, context usage bar, token count, session cost
-**Line 2** — Project folder, git branch + hash, session duration, 5h reset timer, lines changed
-**Line 3** — Remaining capacity bars (context, 5h, 7d), prompt cache hit rate
+### Lite 모드 (1줄)
 
-### Lite mode (1-line)
-
-```
-📁 my-project │ main │ Opus 4.6 │ 5h ██████░░ 72% │ 7d █████░░░ 65%
+```text
+my-project │ main │ Opus 4.6 │ 5h █████░░░ 72% │ 7d █████░░░ 65%
 ```
 
-Folder, branch, model, 5-hour remaining, 7-day remaining — the essentials.
+폴더, 브랜치, 모델, 5시간/7일 사용량만 보여주는 간단 모드입니다. `--left` 사용 시 남은 용량으로 전환됩니다.
 
-### Color coding / 색상 의미
+### --soft (파스텔 색상)
 
-- 🟢 Green / 초록: 여유 (60% 이상 남음)
-- 🟡 Yellow / 노랑: 주의 (30~60% 남음)
-- 🔴 Red / 빨강: 부족 (30% 미만 남음)
+`--soft` 플래그를 추가하면 아이스크림 파스텔 톤 색상이 적용됩니다. 트루컬러(24bit) 지원 터미널이 필요합니다.
 
-### Install
+```text
+Opus 4.6 · In:180K Out:54K · 234K/200K · $1.23
+my-project · main a1b2c3d · ⏱ 12m30s · +45 -12
+ctx █████░░░ 58% · 5h █████░░░ 72%(3h42m) · 7d █████░░░ 65% · cache 89%
+```
+
+구분자가 `│`에서 `·`로, 색상이 파스텔 톤으로 변경됩니다.
+
+### 색상 기준
+
+| 색상 | used (기본) | --left |
+|:---:|------|------|
+| 초록 | 사용량 적음 | 충분한 잔여량 |
+| 노랑 | 주의 구간 | 주의 구간 |
+| 빨강 | 사용량 많음, 한도 근접 | 잔여량 부족 |
+
+### 설치
 
 ```bash
-# Full mode (3-line, default)
+# macOS / Linux / Git Bash - Full 모드 (3줄, 기본)
 curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/install.sh | bash
 
-# Lite mode (1-line)
+# macOS / Linux / Git Bash - Lite 모드 (1줄)
 curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/install.sh | bash -s -- lite
 ```
 
-Downloads `claude-statusline.sh` to `~/.claude/` and adds the `statusLine` config to your `settings.json`.
+```powershell
+# Windows PowerShell - Full 모드 (3줄, 기본)
+$script = Join-Path $env:TEMP 'aiops-install.ps1'
+Invoke-WebRequest https://raw.githubusercontent.com/gencrewai/aiops/main/install.ps1 -OutFile $script
+powershell -NoProfile -ExecutionPolicy Bypass -File $script
 
-Restart Claude Code after installing. Re-run with the other mode to switch.
+# Windows PowerShell - Lite 모드 (1줄)
+powershell -NoProfile -ExecutionPolicy Bypass -File $script -Mode lite
+```
 
-#### Manual install
+플랫폼에 맞는 상태 바 스크립트를 `~/.claude/`에 다운로드하고 `settings.json`에 `statusLine` 설정을 추가합니다.
 
-1. Download `claude-statusline.sh` to `~/.claude/claude-statusline.sh`
-2. Add to `~/.claude/settings.json`:
+설치 후 Claude Code를 재시작하세요. 다른 모드로 전환하려면 설치 스크립트를 다시 실행하면 됩니다.
+
+#### 수동 설치
+
+**macOS / Linux / Git Bash:**
+
+1. `claude-statusline.sh`를 `~/.claude/claude-statusline.sh`에 다운로드
+2. `~/.claude/settings.json`에 추가:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "bash \"~/.claude/claude-statusline.sh\""
+    "command": "~/.claude/claude-statusline.sh"
   }
 }
 ```
 
-For lite mode, append `lite`:
+옵션 플래그를 추가하여 조합할 수 있습니다:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "bash \"~/.claude/claude-statusline.sh\" lite"
+    "command": "~/.claude/claude-statusline.sh lite --left --soft"
   }
 }
 ```
 
-### Uninstall
+**Windows PowerShell:**
+
+1. `claude-statusline.ps1`을 `~/.claude/claude-statusline.ps1`에 다운로드
+2. `~/.claude/settings.json`에 추가:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/username/.claude/claude-statusline.ps1"
+  }
+}
+```
+
+옵션 플래그를 추가하여 조합할 수 있습니다:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/username/.claude/claude-statusline.ps1 lite --left --soft"
+  }
+}
+```
+
+### 삭제
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/uninstall.sh | bash
 ```
 
-### How it works
+```powershell
+$script = Join-Path $env:TEMP 'aiops-uninstall.ps1'
+Invoke-WebRequest https://raw.githubusercontent.com/gencrewai/aiops/main/uninstall.ps1 -OutFile $script
+powershell -NoProfile -ExecutionPolicy Bypass -File $script
+```
 
-Claude Code pipes a JSON object with session metrics to the `statusLine` command's stdin on each turn. The script parses the JSON and renders colored output using ANSI escape codes.
+### 동작 방식
 
-Available fields in the JSON input:
-- `display_name`, `context_window_size`, `used_percentage`
-- `total_input_tokens`, `total_output_tokens`, `total_cost_usd`
-- `total_duration_ms`, `total_lines_added`, `total_lines_removed`
+Claude Code는 매 턴마다 세션 메트릭이 담긴 JSON 객체를 `statusLine` 명령의 stdin으로 전달합니다. 스크립트가 JSON을 파싱하고 ANSI 이스케이프 코드로 색상 출력을 렌더링합니다.
+
+JSON 입력에서 사용 가능한 필드:
+
+- `model.display_name`, `context_window.context_window_size`, `context_window.used_percentage`
+- `context_window.total_input_tokens`, `context_window.total_output_tokens`, `cost.total_cost_usd`
+- `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`
 - `cache_read_input_tokens`, `cache_creation_input_tokens`
 - `rate_limits.five_hour.used_percentage`, `rate_limits.seven_day.used_percentage`
-- `current_dir`
+- `workspace.current_dir`, `cwd`
+
+### 문제 해결
+
+- Claude Code의 user/project trust를 수락해야 `statusLine` 명령이 실행됩니다.
+- `disableAllHooks`가 `true`이면 상태 바도 비활성화됩니다.
+- 기존 `~/.claude/settings.json`이 유효한 JSON이어야 합니다. 이전 설치 스크립트가 텍스트를 직접 추가하여 한 줄짜리 JSON을 깨뜨릴 수 있습니다.
+- `bash "~/.claude/claude-statusline.sh"`처럼 따옴표로 감싸면 `~`가 홈 디렉터리로 확장되지 않아 스크립트를 찾지 못합니다.
+- 이전 버전을 설치한 경우, 설치 스크립트를 한 번 더 실행하면 `statusLine.command`가 현재 환경에 맞게 갱신됩니다.
+- 최신 빌드에서는 컨텍스트 사용량을 `ctx used`, 남은 용량을 `left`로 표시하여 사용률과 잔여율을 시각적으로 구분합니다.
+- 상태 스크립트는 숫자 퍼센트를 받으며, bash 산술 연산 전에 소수점을 자릅니다.
+- Git Bash 없는 Windows에서는 `install.ps1`과 `claude-statusline.ps1`을 사용하세요. bash 전용 설치는 순수 PowerShell 환경에서 실행되지 않습니다.
 
 ---
 
-## Codex CLI — native status line
+## Codex CLI - 기본 상태 바
 
-Configures Codex CLI's built-in status line with optimal items.
-Codex CLI의 내장 status line을 최적 항목으로 구성합니다.
+Codex CLI의 내장 상태 바를 실용적인 기본 항목으로 구성합니다.
 
+```text
+~/my-project | main | o4-mini (high) | 7d: 12%
 ```
-~/my-project │ main │ o4-mini (high) │ 7d: 12%
-```
 
-### What it shows / 표시 항목
+### 표시 항목
 
-| Item | Description / 설명 |
-|------|-------------------|
-| `current-dir` | Working directory / 작업 디렉토리 |
-| `git-branch` | Current git branch / 현재 git 브랜치 |
-| `model-with-reasoning` | Model name + reasoning level / 모델명 + 추론 수준 |
-| `weekly-limit` | Weekly rate limit / 주간 사용 제한 |
+| 항목 | 설명 |
+|------|------|
+| `current-dir` | 작업 디렉터리 |
+| `git-branch` | 현재 git 브랜치 |
+| `model-with-reasoning` | 모델명 + 추론 레벨 |
+| `weekly-limit` | 주간 사용 한도 |
 
-### Install
+### 설치
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-install.sh | bash
 ```
 
-This adds `tui.status_line` config to your `~/.codex/config.toml`.
+`~/.codex/config.toml`에 `tui.status_line` 설정을 추가합니다. bash 환경을 전제로 합니다. Git Bash나 WSL 없는 Windows에서는 `config.toml`을 직접 편집하세요.
 
-Restart Codex CLI after installing.
+설치 후 Codex CLI를 재시작하세요.
 
-#### Manual install
+#### 수동 설치
 
-Add to `~/.codex/config.toml`:
+`~/.codex/config.toml`에 추가:
 
 ```toml
 [tui]
@@ -129,11 +216,11 @@ status_line = ["current-dir", "git-branch", "model-with-reasoning", "weekly-limi
 status_line_use_colors = true
 ```
 
-#### Customize interactively
+#### 인터랙티브 커스터마이즈
 
-Inside Codex CLI, run `/statusline` to toggle and reorder items.
+Codex CLI 내에서 `/statusline`을 실행하여 항목을 토글하고 순서를 변경할 수 있습니다.
 
-### Uninstall
+### 삭제
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-uninstall.sh | bash
@@ -141,10 +228,10 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-uninstal
 
 ---
 
-## Requirements
+## 요구사항
 
-- **Claude Code**: Claude Code CLI (with `statusLine` support), bash, git, sed, grep
-- **Codex CLI**: Codex CLI v0.1+ (with `/statusline` support)
+- **Claude Code**: `statusLine`을 지원하는 Claude Code CLI + bash(`.sh` 설치) 또는 PowerShell(Windows 설치)
+- **Codex CLI**: `/statusline`을 지원하는 Codex CLI v0.1+
 
 ## License
 

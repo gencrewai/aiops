@@ -1,25 +1,53 @@
 #!/usr/bin/env bash
 # Claude Code statusLine — 3-line or 1-line status bar
-# Usage: bash statusline.sh          → 3-line (default)
-#        bash statusline.sh lite     → 1-line
+# Usage: bash statusline.sh               → 3-line, soft pastel (default)
+#        bash statusline.sh lite           → 1-line
+#        bash statusline.sh --left         → 3-line, remaining bars
+#        bash statusline.sh --hard         → 3-line, classic ANSI colors
+#        bash statusline.sh lite --left --hard → combine freely
 # https://github.com/gencrewai/aiops
 set -u
-MODE="${1:-full}"
+
+# --- parse arguments ---
+MODE="full"
+VIEW="used"
+THEME="soft"
+
+for arg in "$@"; do
+  case "$arg" in
+    lite)    MODE="lite" ;;
+    --left)  VIEW="left" ;;
+    --hard)  THEME="normal" ;;
+  esac
+done
+
 input=$(cat)
 
-# --- color constants (use $'...' for real ESC) ---
+# --- color constants ---
 RST=$'\033[0m'
-CYAN=$'\033[36m'
-GREEN=$'\033[32m'
-YELLOW=$'\033[33m'
-RED=$'\033[31m'
 DIM=$'\033[2m'
 BOLD=$'\033[1m'
-WHITE=$'\033[37m'
-MAGENTA=$'\033[35m'
-BLUE=$'\033[34m'
 
-SEP=" ${DIM}│${RST} "
+if [ "$THEME" = "soft" ]; then
+  # ice-cream pastel palette (truecolor)
+  CYAN=$'\033[38;2;137;207;240m'    # sky blue
+  GREEN=$'\033[38;2;152;224;173m'   # mint
+  YELLOW=$'\033[38;2;255;213;128m'  # butter
+  RED=$'\033[38;2;255;154;139m'     # peach coral
+  WHITE=$'\033[38;2;255;253;230m'   # cream
+  MAGENTA=$'\033[38;2;200;162;200m' # lilac
+  BLUE=$'\033[38;2;174;198;255m'    # periwinkle
+  SEP=" ${DIM}│${RST} "
+else
+  CYAN=$'\033[36m'
+  GREEN=$'\033[32m'
+  YELLOW=$'\033[33m'
+  RED=$'\033[31m'
+  WHITE=$'\033[37m'
+  MAGENTA=$'\033[35m'
+  BLUE=$'\033[34m'
+  SEP=" ${DIM}│${RST} "
+fi
 
 # --- extract helpers ---
 str_field() {
@@ -28,24 +56,30 @@ str_field() {
 num_field() {
   printf '%s' "$input" | grep -oE "\"$1\"[[:space:]]*:[[:space:]]*[0-9.]+" | head -n1 | grep -oE '[0-9.]+$'
 }
+int_part() {
+  local n="${1:-0}"
+  n="${n%%.*}"
+  [ -z "$n" ] && n=0
+  printf '%s' "$n"
+}
 
 # --- data extraction ---
 model_name=$(str_field "display_name")
 [ -z "$model_name" ] && model_name="Claude"
 model_short=$(printf '%s' "$model_name" | sed -E 's/^Claude //')
 
-input_tokens=$(num_field "total_input_tokens");  [ -z "$input_tokens" ] && input_tokens=0
-output_tokens=$(num_field "total_output_tokens"); [ -z "$output_tokens" ] && output_tokens=0
-ctx_size=$(num_field "context_window_size");      [ -z "$ctx_size" ] && ctx_size=200000
-ctx_pct=$(num_field "used_percentage");           [ -z "$ctx_pct" ] && ctx_pct=0
+input_tokens=$(int_part "$(num_field "total_input_tokens")")
+output_tokens=$(int_part "$(num_field "total_output_tokens")")
+ctx_size=$(int_part "$(num_field "context_window_size")")
+ctx_pct=$(int_part "$(num_field "used_percentage")")
 cost_usd=$(num_field "total_cost_usd");           [ -z "$cost_usd" ] && cost_usd="0"
 
-duration_ms=$(num_field "total_duration_ms");     [ -z "$duration_ms" ] && duration_ms=0
-lines_added=$(num_field "total_lines_added");     [ -z "$lines_added" ] && lines_added=0
-lines_removed=$(num_field "total_lines_removed"); [ -z "$lines_removed" ] && lines_removed=0
+duration_ms=$(int_part "$(num_field "total_duration_ms")")
+lines_added=$(int_part "$(num_field "total_lines_added")")
+lines_removed=$(int_part "$(num_field "total_lines_removed")")
 
-cache_read=$(num_field "cache_read_input_tokens");     [ -z "$cache_read" ] && cache_read=0
-cache_create=$(num_field "cache_creation_input_tokens"); [ -z "$cache_create" ] && cache_create=0
+cache_read=$(int_part "$(num_field "cache_read_input_tokens")")
+cache_create=$(int_part "$(num_field "cache_creation_input_tokens")")
 
 cwd=$(str_field "current_dir")
 [ -z "$cwd" ] && cwd=$(str_field "cwd")
@@ -53,13 +87,13 @@ project_name=$(basename "$cwd" 2>/dev/null)
 [ -z "$project_name" ] && project_name="?"
 
 # rate_limits
-five_pct=$(printf '%s' "$input" | grep -oE '"five_hour"[^}]*' | grep -oE '"used_percentage"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+$')
-five_reset=$(printf '%s' "$input" | grep -oE '"five_hour"[^}]*' | grep -oE '"resets_at"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+$')
-[ -z "$five_pct" ] && five_pct=0
-[ -z "$five_reset" ] && five_reset=0
+five_pct=$(printf '%s' "$input" | grep -oE '"five_hour"[^}]*' | grep -oE '"used_percentage"[[:space:]]*:[[:space:]]*[0-9.]+' | grep -oE '[0-9.]+$')
+five_reset=$(printf '%s' "$input" | grep -oE '"five_hour"[^}]*' | grep -oE '"resets_at"[[:space:]]*:[[:space:]]*[0-9.]+' | grep -oE '[0-9.]+$')
+five_pct=$(int_part "$five_pct")
+five_reset=$(int_part "$five_reset")
 
-seven_pct=$(printf '%s' "$input" | grep -oE '"seven_day"[^}]*' | grep -oE '"used_percentage"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+$')
-[ -z "$seven_pct" ] && seven_pct=0
+seven_pct=$(printf '%s' "$input" | grep -oE '"seven_day"[^}]*' | grep -oE '"used_percentage"[[:space:]]*:[[:space:]]*[0-9.]+' | grep -oE '[0-9.]+$')
+seven_pct=$(int_part "$seven_pct")
 
 total_tokens=$((input_tokens + output_tokens))
 
@@ -98,6 +132,7 @@ make_bar() {
   printf '%s' "$bar"
 }
 
+# used color: high = red (bad)
 pct_color() {
   local pct=$1
   if [ "$pct" -ge 80 ]; then printf '%s' "$RED"
@@ -106,6 +141,7 @@ pct_color() {
   fi
 }
 
+# remaining color: low = red (bad)
 health_color() {
   local h=$1
   if [ "$h" -le 30 ]; then printf '%s' "$RED"
@@ -162,16 +198,16 @@ seven_remain=$((100 - seven_pct))
 # cost formatting
 cost_fmt=$(printf '%.2f' "$cost_usd")
 
-# --- compose LINE 1: model + context + cost ---
-ctx_color=$(pct_color "$ctx_pct")
-ctx_bar=$(make_bar "$ctx_pct" 10)
+# --- compose LINE 1: model + in/out tokens + total/ctx + cost ---
+in_display=$(format_tokens "$input_tokens")
+out_display=$(format_tokens "$output_tokens")
 tk_display=$(format_tokens "$total_tokens")
 ctx_display=$(format_ctx_size "$ctx_size")
 
 L1=""
 L1="${L1}${BOLD}${CYAN}${model_short}${RST}"
 L1="${L1}${SEP}"
-L1="${L1}${ctx_color}${ctx_bar}${RST} ${ctx_color}${ctx_pct}%${RST}"
+L1="${L1}${DIM}In:${RST}${WHITE}${in_display}${RST} ${DIM}Out:${RST}${WHITE}${out_display}${RST}"
 L1="${L1}${SEP}"
 L1="${L1}${WHITE}${tk_display}/${ctx_display}${RST}"
 L1="${L1}${SEP}"
@@ -179,49 +215,63 @@ L1="${L1}💰 ${BOLD}${YELLOW}\$${cost_fmt}${RST}"
 
 # --- compose LINE 2: project + git + session time + changes ---
 L2=""
-L2="${L2}📁 ${BLUE}${project_name}${RST}"
+L2="${L2}${BLUE}${project_name}${RST}"
 L2="${L2}${SEP}"
 L2="${L2}${YELLOW}${git_branch}${RST} ${DIM}${git_hash}${RST}"
 L2="${L2}${SEP}"
-L2="${L2}${MAGENTA}${dur_display}${RST}"
-if [ -n "$five_remain_display" ]; then
-  L2="${L2}${SEP}"
-  L2="${L2}⏳ ${DIM}~${five_remain_display}${RST}"
-fi
+L2="${L2}${MAGENTA}⏱ ${dur_display}${RST}"
 L2="${L2}${SEP}"
 L2="${L2}${GREEN}+${lines_added}${RST} ${RED}-${lines_removed}${RST}"
 
-# --- compose LINE 3: context remain + rate limits + cache ---
-ctx_remain_bar=$(make_bar "$ctx_remain" 8)
-five_remain_bar=$(make_bar "$five_remain" 8)
-seven_remain_bar=$(make_bar "$seven_remain" 8)
-ctx_remain_color=$(health_color "$ctx_remain")
-five_remain_color=$(health_color "$five_remain")
-seven_remain_color=$(health_color "$seven_remain")
-
+# --- compose LINE 3: metrics bars (used or left) ---
 L3=""
-L3="${L3}${DIM}ctx${RST} ${ctx_remain_color}${ctx_remain_bar} ${ctx_remain}%${RST}"
+if [ "$VIEW" = "left" ]; then
+  # remaining capacity view
+  ctx_v=$ctx_remain; five_v=$five_remain; seven_v=$seven_remain
+  ctx_vc=$(health_color "$ctx_v")
+  five_vc=$(health_color "$five_v")
+  seven_vc=$(health_color "$seven_v")
+  ctx_label="ctx left"; five_label="5h left"; seven_label="7d left"
+else
+  # used view (default)
+  ctx_v=$ctx_pct; five_v=$five_pct; seven_v=$seven_pct
+  ctx_vc=$(pct_color "$ctx_v")
+  five_vc=$(pct_color "$five_v")
+  seven_vc=$(pct_color "$seven_v")
+  ctx_label="ctx"; five_label="5h"; seven_label="7d"
+fi
+
+ctx_v_bar=$(make_bar "$ctx_v" 8)
+five_v_bar=$(make_bar "$five_v" 8)
+seven_v_bar=$(make_bar "$seven_v" 8)
+
+L3="${L3}${DIM}${ctx_label}${RST} ${ctx_vc}${ctx_v_bar} ${ctx_v}%${RST}"
 L3="${L3}${SEP}"
-L3="${L3}${DIM}5h${RST} ${five_remain_color}${five_remain_bar} ${five_remain}%${RST}"
+L3="${L3}${DIM}${five_label}${RST} ${five_vc}${five_v_bar} ${five_v}%${RST}"
 [ -n "$five_remain_display" ] && L3="${L3}${DIM}(${five_remain_display})${RST}"
 L3="${L3}${SEP}"
-L3="${L3}${DIM}7d${RST} ${seven_remain_color}${seven_remain_bar} ${seven_remain}%${RST}"
+L3="${L3}${DIM}${seven_label}${RST} ${seven_vc}${seven_v_bar} ${seven_v}%${RST}"
 L3="${L3}${SEP}"
 L3="${L3}📦 ${GREEN}${cache_pct}%${RST}"
 
 # --- output ---
 if [ "$MODE" = "lite" ]; then
-  # 1-line: folder │ branch │ model │ 5h remain │ 7d remain
   LITE=""
-  LITE="${LITE}📁 ${BLUE}${project_name}${RST}"
+  LITE="${LITE}${BLUE}${project_name}${RST}"
   LITE="${LITE}${SEP}"
   LITE="${LITE}${YELLOW}${git_branch}${RST}"
   LITE="${LITE}${SEP}"
   LITE="${LITE}${BOLD}${CYAN}${model_short}${RST}"
   LITE="${LITE}${SEP}"
-  LITE="${LITE}${DIM}5h${RST} ${five_remain_color}${five_remain_bar} ${five_remain}%${RST}"
-  LITE="${LITE}${SEP}"
-  LITE="${LITE}${DIM}7d${RST} ${seven_remain_color}${seven_remain_bar} ${seven_remain}%${RST}"
+  if [ "$VIEW" = "left" ]; then
+    LITE="${LITE}${DIM}5h left${RST} ${five_vc}${five_v_bar} ${five_v}%${RST}"
+    LITE="${LITE}${SEP}"
+    LITE="${LITE}${DIM}7d left${RST} ${seven_vc}${seven_v_bar} ${seven_v}%${RST}"
+  else
+    LITE="${LITE}${DIM}5h${RST} ${five_vc}${five_v_bar} ${five_v}%${RST}"
+    LITE="${LITE}${SEP}"
+    LITE="${LITE}${DIM}7d${RST} ${seven_vc}${seven_v_bar} ${seven_v}%${RST}"
+  fi
   printf '%s' "$LITE"
 else
   printf '%s\n%s\n%s' "$L1" "$L2" "$L3"
