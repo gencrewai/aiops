@@ -219,9 +219,9 @@ if [ "$MODE" = "lite" ]; then
   LITE="${LITE}${SEP}"
   LITE="${LITE}${BOLD}${CYAN}${model_short}${RST}"
   LITE="${LITE}${SEP}"
-  LITE="${LITE}${DIM}5h${RST} ${five_remain_color}${five_remain}%${RST}"
+  LITE="${LITE}${DIM}5h${RST} ${five_remain_color}${five_remain_bar} ${five_remain}%${RST}"
   LITE="${LITE}${SEP}"
-  LITE="${LITE}${DIM}7d${RST} ${seven_remain_color}${seven_remain}%${RST}"
+  LITE="${LITE}${DIM}7d${RST} ${seven_remain_color}${seven_remain_bar} ${seven_remain}%${RST}"
   printf '%s' "$LITE"
 else
   printf '%s\n%s\n%s' "$L1" "$L2" "$L3"

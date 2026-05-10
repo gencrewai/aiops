@@ -21,7 +21,7 @@ ctx ████████ 42% │ 5h ██████░░ 72% │ 7d █�
 ### Lite mode (1-line)
 
 ```
-📁 my-project │ main │ Opus 4.6 │ 5h 72% │ 7d 65%
+📁 my-project │ main │ Opus 4.6 │ 5h ██████░░ 72% │ 7d █████░░░ 65%
 ```
 
 Folder, branch, model, 5-hour remaining, 7-day remaining — the essentials.
