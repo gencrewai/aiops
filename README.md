@@ -77,20 +77,17 @@ Configures Codex CLI's built-in status line with optimal items.
 Codex CLI의 내장 status line을 최적 항목으로 구성합니다.
 
 ```
-o4-mini (high) │ ████████░░ 78% │ 5h: 23% │ 7d: 12% │ main │ ~/my-project
+~/my-project │ main │ o4-mini (high) │ 7d: 12%
 ```
 
 ### What it shows / 표시 항목
 
 | Item | Description / 설명 |
 |------|-------------------|
-| `model-with-reasoning` | Model name + reasoning level / 모델명 + 추론 수준 |
-| `context-usage-bar` | Context window usage bar / 컨텍스트 사용량 바 |
-| `context-usage-percent` | Context usage % / 컨텍스트 사용률 |
-| `five-hour-limit` | 5-hour rate limit / 5시간 사용 제한 |
-| `weekly-limit` | Weekly rate limit / 주간 사용 제한 |
-| `git-branch` | Current git branch / 현재 git 브랜치 |
 | `current-dir` | Working directory / 작업 디렉토리 |
+| `git-branch` | Current git branch / 현재 git 브랜치 |
+| `model-with-reasoning` | Model name + reasoning level / 모델명 + 추론 수준 |
+| `weekly-limit` | Weekly rate limit / 주간 사용 제한 |
 
 ### Install
 
@@ -108,7 +105,7 @@ Add to `~/.codex/config.toml`:
 
 ```toml
 [tui]
-status_line = ["model-with-reasoning", "context-usage-bar", "context-usage-percent", "five-hour-limit", "weekly-limit", "git-branch", "current-dir"]
+status_line = ["current-dir", "git-branch", "model-with-reasoning", "weekly-limit"]
 status_line_use_colors = true
 ```
 

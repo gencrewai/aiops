@@ -12,7 +12,7 @@ echo "Installing codex-statusline..."
 mkdir -p "$CODEX_HOME"
 
 # status line items to configure
-STATUS_LINE='["model-with-reasoning", "context-usage-bar", "context-usage-percent", "five-hour-limit", "weekly-limit", "git-branch", "current-dir"]'
+STATUS_LINE='["current-dir", "git-branch", "model-with-reasoning", "weekly-limit"]'
 
 if [ -f "$CONFIG_FILE" ]; then
   if grep -q 'status_line' "$CONFIG_FILE" 2>/dev/null; then
@@ -52,13 +52,10 @@ echo ""
 echo "Done! Restart Codex CLI to see the status bar."
 echo ""
 echo "Status line items:"
-echo "  model-with-reasoning  — Model name + reasoning level"
-echo "  context-usage-bar     — Context window usage bar"
-echo "  context-usage-percent — Context usage %"
-echo "  five-hour-limit       — 5-hour rate limit"
-echo "  weekly-limit          — Weekly rate limit"
-echo "  git-branch            — Current git branch"
 echo "  current-dir           — Working directory"
+echo "  git-branch            — Current git branch"
+echo "  model-with-reasoning  — Model name + reasoning level"
+echo "  weekly-limit          — Weekly rate limit"
 echo ""
 echo "Customize: codex /statusline (interactive) or edit ~/.codex/config.toml"
 echo "To uninstall: curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-uninstall.sh | bash"
