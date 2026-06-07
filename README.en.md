@@ -8,6 +8,8 @@ Status bars for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) an
 
 ## Claude Code - Status Bar (full / lite)
 
+![Claude Code status bar](./assets/claude-statusline.png)
+
 Two modes and optional flags are available.
 
 | Option | Description |
@@ -181,10 +183,12 @@ Available fields in the JSON input:
 
 ## Codex CLI - Native Status Line
 
+![Codex CLI status bar](./assets/codex-statusline.png)
+
 Configures Codex CLI's built-in status line with practical default items.
 
 ```text
-~/my-project | main | o4-mini (high) | 7d: 12%
+~/my-project | main | gpt-5.5 (xhigh) | ctx 18% | In 12K | Out 3K | 5h 22% | 7d 8%
 ```
 
 ### What It Shows
@@ -193,8 +197,14 @@ Configures Codex CLI's built-in status line with practical default items.
 |------|-------------|
 | `current-dir` | Working directory |
 | `git-branch` | Current git branch |
-| `model-with-reasoning` | Model name + reasoning level |
+| `model-with-reasoning` | Model name + reasoning effort (e.g. `gpt-5.5 (xhigh)`) |
+| `context-used` | Context window usage % |
+| `total-input-tokens` | Input tokens (In) |
+| `total-output-tokens` | Output tokens (Out) |
+| `five-hour-limit` | 5-hour rate limit |
 | `weekly-limit` | Weekly rate limit |
+
+> Other available items: `project-name`, `context-remaining`, `used-tokens`, `codex-version`, `task-progress`, `fast-mode`, `thread-title`, etc. Run `codex /statusline` (interactive) or edit `~/.codex/config.toml` to change the mix.
 
 ### Install
 
@@ -213,7 +223,7 @@ Add to `~/.codex/config.toml`:
 
 ```toml
 [tui]
-status_line = ["current-dir", "git-branch", "model-with-reasoning", "weekly-limit"]
+status_line = ["current-dir", "git-branch", "model-with-reasoning", "context-used", "total-input-tokens", "total-output-tokens", "five-hour-limit", "weekly-limit"]
 status_line_use_colors = true
 ```
 

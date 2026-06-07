@@ -68,6 +68,10 @@ model_name=$(str_field "display_name")
 [ -z "$model_name" ] && model_name="Claude"
 model_short=$(printf '%s' "$model_name" | sed -E 's/^Claude //')
 
+# reasoning effort (Opus 4.5+): "effort":{"level":"high"} or "effort":"high"
+effort_level=$(printf '%s' "$input" | grep -oE '"effort"[[:space:]]*:[[:space:]]*\{[^}]*\}' | grep -oE '"level"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/')
+[ -z "$effort_level" ] && effort_level=$(printf '%s' "$input" | grep -oE '"effort"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/')
+
 input_tokens=$(int_part "$(num_field "total_input_tokens")")
 output_tokens=$(int_part "$(num_field "total_output_tokens")")
 ctx_size=$(int_part "$(num_field "context_window_size")")
@@ -150,6 +154,16 @@ health_color() {
   fi
 }
 
+# reasoning effort color: informational (high = deeper thinking, not a warning)
+effort_color() {
+  case "$1" in
+    high)        printf '%s' "$MAGENTA" ;;
+    medium|med)  printf '%s' "$BLUE" ;;
+    low)         printf '%s' "$GREEN" ;;
+    *)           printf '%s' "$DIM" ;;
+  esac
+}
+
 # --- computed metrics ---
 
 # session elapsed time
@@ -204,8 +218,14 @@ out_display=$(format_tokens "$output_tokens")
 tk_display=$(format_tokens "$total_tokens")
 ctx_display=$(format_ctx_size "$ctx_size")
 
+# reasoning effort segment (shown right after model, only if present)
+effort_seg=""
+if [ -n "$effort_level" ]; then
+  effort_seg=" ${DIM}🧠${RST}$(effort_color "$effort_level")${effort_level}${RST}"
+fi
+
 L1=""
-L1="${L1}${BOLD}${CYAN}${model_short}${RST}"
+L1="${L1}${BOLD}${CYAN}${model_short}${RST}${effort_seg}"
 L1="${L1}${SEP}"
 L1="${L1}${DIM}In:${RST}${WHITE}${in_display}${RST} ${DIM}Out:${RST}${WHITE}${out_display}${RST}"
 L1="${L1}${SEP}"
@@ -261,7 +281,7 @@ if [ "$MODE" = "lite" ]; then
   LITE="${LITE}${SEP}"
   LITE="${LITE}${YELLOW}${git_branch}${RST}"
   LITE="${LITE}${SEP}"
-  LITE="${LITE}${BOLD}${CYAN}${model_short}${RST}"
+  LITE="${LITE}${BOLD}${CYAN}${model_short}${RST}${effort_seg}"
   LITE="${LITE}${SEP}"
   if [ "$VIEW" = "left" ]; then
     LITE="${LITE}${DIM}5h left${RST} ${five_vc}${five_v_bar} ${five_v}%${RST}"

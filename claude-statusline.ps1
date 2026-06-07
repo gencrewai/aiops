@@ -151,6 +151,18 @@ function Get-HealthColor {
   return $GREEN
 }
 
+function Get-EffortColor {
+  param([string]$Level)
+
+  switch ($Level.ToLower()) {
+    'high'   { return $MAGENTA }
+    'medium' { return $BLUE }
+    'med'    { return $BLUE }
+    'low'    { return $GREEN }
+    default  { return $DIM }
+  }
+}
+
 function Invoke-GitText {
   param(
     [string]$WorkingDirectory,
@@ -178,6 +190,16 @@ function Invoke-GitText {
 
 $modelName = Get-StringValue $data.model.display_name 'Claude'
 $modelShort = if ($modelName -like 'Claude *') { $modelName.Substring(7) } else { $modelName }
+
+# reasoning effort (Opus 4.5+): "effort":{"level":"high"} or "effort":"high"
+$effortLevel = ''
+if ($null -ne $data.effort) {
+  if ($data.effort -is [string]) {
+    $effortLevel = Get-StringValue $data.effort ''
+  } else {
+    $effortLevel = Get-StringValue $data.effort.level ''
+  }
+}
 
 $ctx = $data.context_window
 $cost = $data.cost
@@ -251,8 +273,15 @@ $sevenRemain = Clamp-Percent (100 - $sevenPct)
 
 $costFmt = '{0:F2}' -f $costUsd
 
+# reasoning effort segment (shown right after model, only if present)
+$effortSeg = ''
+if ($effortLevel) {
+  $brain = [char]::ConvertFromUtf32(0x1F9E0)
+  $effortSeg = " ${DIM}${brain}${RST}$(Get-EffortColor $effortLevel)${effortLevel}${RST}"
+}
+
 $line1 = @(
-  "${BOLD}${CYAN}${modelShort}${RST}"
+  "${BOLD}${CYAN}${modelShort}${RST}${effortSeg}"
   "${DIM}In:${RST}${WHITE}$(Format-Tokens $inputTokens)${RST} ${DIM}Out:${RST}${WHITE}$(Format-Tokens $outputTokens)${RST}"
   "${WHITE}$(Format-Tokens $totalTokens)/$(Format-Tokens $ctxSize)${RST}"
   "${BOLD}${YELLOW}`$$costFmt${RST}"
@@ -293,7 +322,7 @@ if ($Mode -eq 'lite') {
   $liteParts = @(
     "${BLUE}${projectName}${RST}"
     "${YELLOW}${gitBranch}${RST}"
-    "${BOLD}${CYAN}${modelShort}${RST}"
+    "${BOLD}${CYAN}${modelShort}${RST}${effortSeg}"
   )
   if ($View -eq 'left') {
     $liteParts += "${DIM}5h left${RST} ${fiveVc}$(Make-Bar -Percent $fiveV -Width 8) ${fiveV}%${RST}"
