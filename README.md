@@ -228,10 +228,65 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-uninstal
 
 ---
 
+## Terminal / tmux - 공통 상태 표시
+
+Claude Code나 Codex CLI 내부가 아닌 일반 터미널 프롬프트와 tmux 상태 바에도 현재 프로젝트와 git 상태를 표시합니다.
+
+```text
+aiops my-project | main *2
+```
+
+### 설치
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-install.sh | bash
+```
+
+자동 업데이트를 켜려면 설치 시 명시적으로 옵션을 추가합니다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-install.sh | bash -s -- --auto-update
+```
+
+설치 스크립트는 다음 작업을 수행합니다.
+
+- `~/.aiops/terminal-statusline.sh` 설치
+- `~/.aiops/terminal-update.sh` 설치
+- `~/.zshrc`, `~/.bashrc`에 marker block 추가
+- `~/.tmux.conf`에 `~/.aiops/tmux.conf` source block 추가
+- 실행 중인 tmux 서버가 있으면 설정 즉시 reload
+
+기존 shell/tmux 설정은 marker block 밖에서 수정하지 않습니다. 새 터미널을 열거나 `source ~/.zshrc`를 실행하면 zsh 오른쪽 프롬프트에 표시됩니다. tmux에서는 status-left 영역에 표시됩니다.
+
+### 업데이트
+
+기본 설치는 자동 업데이트를 켜지 않습니다. 수동 업데이트는 다음 명령으로 실행합니다.
+
+```bash
+~/.aiops/terminal-update.sh --force
+```
+
+`--auto-update`로 설치하면 새 터미널 시작 또는 tmux 설정 로드 시 하루 1번 이하로 백그라운드 업데이트를 확인합니다. 프롬프트 렌더링과 tmux status 주기 실행에서는 네트워크 요청을 하지 않습니다.
+
+자동 업데이트를 끄려면:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-install.sh | bash -s -- --no-auto-update
+```
+
+### 삭제
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-uninstall.sh | bash
+```
+
+---
+
 ## 요구사항
 
 - **Claude Code**: `statusLine`을 지원하는 Claude Code CLI + bash(`.sh` 설치) 또는 PowerShell(Windows 설치)
 - **Codex CLI**: `/statusline`을 지원하는 Codex CLI v0.1+
+- **Terminal / tmux**: zsh 또는 bash, tmux 3.x 권장
 
 ## License
 

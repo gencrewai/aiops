@@ -6,7 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "claude": "tsx aiops.ts claude",
-    "statusline": "node statusline.js"
+    "statusline": "node statusline.js",
+    "terminal-statusline": "bash terminal-statusline.sh prompt",
+    "terminal-update": "bash terminal-update.sh --force"
   },
   "keywords": [],
   "author": "",

@@ -229,10 +229,65 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-uninstal
 
 ---
 
+## Terminal / tmux - Shared Status
+
+Shows the current project and git state in normal shell prompts and tmux, outside Claude Code or Codex CLI.
+
+```text
+aiops my-project | main *2
+```
+
+### Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-install.sh | bash
+```
+
+To enable automatic updates, opt in during install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-install.sh | bash -s -- --auto-update
+```
+
+The installer:
+
+- Installs `~/.aiops/terminal-statusline.sh`
+- Installs `~/.aiops/terminal-update.sh`
+- Adds a marker block to `~/.zshrc` and `~/.bashrc`
+- Adds a `~/.aiops/tmux.conf` source block to `~/.tmux.conf`
+- Reloads the running tmux server when one exists
+
+Existing shell and tmux config outside the aiops marker blocks is left untouched. Open a new terminal or run `source ~/.zshrc` to see it in the zsh right prompt. In tmux, it appears in the status-left area.
+
+### Update
+
+The default install does not enable automatic updates. Run a manual update with:
+
+```bash
+~/.aiops/terminal-update.sh --force
+```
+
+When installed with `--auto-update`, aiops checks for updates in the background at most once per day when a new terminal starts or tmux config loads. Prompt rendering and tmux status refreshes do not make network requests.
+
+To disable automatic updates:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-install.sh | bash -s -- --no-auto-update
+```
+
+### Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-uninstall.sh | bash
+```
+
+---
+
 ## Requirements
 
 - **Claude Code**: Claude Code CLI with `statusLine` support, plus bash for `.sh` installs or PowerShell for Windows installs
 - **Codex CLI**: Codex CLI v0.1+ with `/statusline` support
+- **Terminal / tmux**: zsh or bash, tmux 3.x recommended
 
 ## License
 
