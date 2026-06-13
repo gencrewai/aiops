@@ -1,5 +1,4 @@
 {
-  "$schema": "https://example.com/aiops/ai-model-profiles.schema.json",
   "version": 1,
   "profiles": [
     {

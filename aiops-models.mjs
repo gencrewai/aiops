@@ -171,6 +171,7 @@ function validateCodexProfile(id, codex) {
   if (codex.provider && codex.provider.id !== codex.model_provider) {
     throw new Error(`${id}.codex.provider.id must match model_provider`);
   }
+  if (codex.provider) validateProviderId(`${id}.codex.provider.id`, codex.provider.id);
 }
 
 function validateOpenCodeProfile(id, opencode) {
@@ -179,6 +180,13 @@ function validateOpenCodeProfile(id, opencode) {
   }
   if (opencode.provider && !opencode.provider.id) {
     throw new Error(`${id}.opencode.provider.id is required`);
+  }
+  if (opencode.provider) validateProviderId(`${id}.opencode.provider.id`, opencode.provider.id);
+}
+
+function validateProviderId(label, value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error(`${label} must contain only letters, numbers, underscores, or hyphens`);
   }
 }
 
@@ -280,13 +288,13 @@ function applyOpenCodeProfile(profile, options) {
   }
 
   if (opencode.agent) {
-    config.agent = {
-      ...(isPlainObject(config.agent) ? config.agent : {}),
-      ...opencode.agent,
-    };
+    config.agent = mergePlainObjects(isPlainObject(config.agent) ? config.agent : {}, opencode.agent);
   }
 
   const after = `${JSON.stringify(config, null, 2)}\n`;
+  if (before && (configFile.endsWith('.jsonc') || hasJsoncSyntax(before))) {
+    console.warn(`OpenCode profile ${profile.id}: JSONC comments/trailing commas are not preserved; backup will keep the original.`);
+  }
   writeConfigFile(configFile, before, after, {
     dryRun: options.dryRun,
     label: `OpenCode profile ${profile.id}`,
@@ -439,6 +447,10 @@ function stripTrailingCommas(raw) {
   return raw.replace(/,\s*([}\]])/g, '$1');
 }
 
+function hasJsoncSyntax(raw) {
+  return stripJsonComments(raw) !== raw || stripTrailingCommas(raw) !== raw;
+}
+
 function writeConfigFile(file, before, after, { dryRun, label }) {
   if (before === after) {
     console.log(`${label}: no changes (${file})`);
@@ -485,7 +497,7 @@ function normalizeTrailingNewline(text) {
 }
 
 function timestamp() {
-  return new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, 'Z');
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.(\d{3})Z$/, '$1Z');
 }
 
 function expandHome(file) {
@@ -496,6 +508,18 @@ function expandHome(file) {
 
 function isPlainObject(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function mergePlainObjects(base, override) {
+  const output = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (isPlainObject(value) && isPlainObject(output[key])) {
+      output[key] = mergePlainObjects(output[key], value);
+    } else {
+      output[key] = value;
+    }
+  }
+  return output;
 }
 
 function pad(value, width) {
