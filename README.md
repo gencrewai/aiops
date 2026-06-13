@@ -239,6 +239,64 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-uninstal
 
 ---
 
+## Model/Profile Switcher - Codex / OpenCode
+
+Codex CLI와 OpenCode의 모델, provider, 계정 alias를 프로파일로 전환합니다.
+
+프로파일은 secret 값을 저장하지 않습니다. API 키는 환경변수나 `{file:...}` 참조로 분리하고, 스위처는 설정 파일만 갱신합니다.
+
+### 설치
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/models-install.sh | bash
+```
+
+### 사용
+
+```bash
+# 사용 가능한 프로파일
+~/.aiops/aiops-models list
+
+# Codex CLI를 표준 모델로 전환하기 전에 미리보기
+~/.aiops/aiops-models use codex-standard --dry-run
+
+# 실제 적용: ~/.codex/config.toml 백업 후 갱신
+~/.aiops/aiops-models use codex-standard
+
+# OpenCode work OpenRouter 계정 alias 적용
+export OPENROUTER_WORK_API_KEY="sk-or-..."
+~/.aiops/aiops-models use opencode-openrouter-work
+```
+
+### 내장 프로파일
+
+| 프로파일 | 대상 | 용도 |
+|----------|------|------|
+| `codex-eco` | Codex | 저비용/일상 작업 |
+| `codex-standard` | Codex | 일반 구현 작업 |
+| `codex-pro` | Codex | 고난도 설계/리뷰 |
+| `codex-openai-api` | Codex | `OPENAI_API_KEY` 기반 API 사용 예시 |
+| `opencode-zen` | OpenCode | OpenCode 기본 Codex 계열 모델 |
+| `opencode-openrouter-work` | OpenCode | 업무용 OpenRouter 계정 alias |
+| `opencode-openrouter-personal` | OpenCode | 개인 OpenRouter 계정 alias |
+
+### 변경되는 파일
+
+| 대상 | 파일 |
+|------|------|
+| Codex | `~/.codex/config.toml` |
+| OpenCode | `~/.config/opencode/opencode.json` 또는 기존 `opencode.jsonc` |
+
+기존 파일이 있으면 쓰기 전에 `*.bak.YYYYMMDDTHHMMSSZ` 백업을 만듭니다. `--dry-run`은 파일을 변경하지 않고 변경 대상만 보고합니다. 프로파일 세부 내용은 `~/.aiops/aiops-models show <profile>`로 확인하세요.
+
+### 삭제
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/models-uninstall.sh | bash
+```
+
+---
+
 ## Terminal / tmux - 공통 상태 표시
 
 Claude Code나 Codex CLI 내부가 아닌 일반 터미널 프롬프트와 tmux 상태 바에도 현재 프로젝트와 git 상태를 표시합니다.
@@ -297,6 +355,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-unins
 
 - **Claude Code**: `statusLine`을 지원하는 Claude Code CLI + bash(`.sh` 설치) 또는 PowerShell(Windows 설치)
 - **Codex CLI**: `/statusline`을 지원하는 Codex CLI v0.1+
+- **Model/Profile Switcher**: Node.js 18+
 - **Terminal / tmux**: zsh 또는 bash, tmux 3.x 권장
 
 ## License
