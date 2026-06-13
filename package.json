@@ -6,6 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "claude": "tsx aiops.ts claude",
+    "model": "node aiops-models.mjs",
+    "models:validate": "node aiops-models.mjs validate",
     "statusline": "node statusline.js",
     "terminal-statusline": "bash terminal-statusline.sh prompt",
     "terminal-update": "bash terminal-update.sh --force"

@@ -1,0 +1,215 @@
+{
+  "$schema": "https://example.com/aiops/ai-model-profiles.schema.json",
+  "version": 1,
+  "profiles": [
+    {
+      "id": "codex-eco",
+      "label": "Codex Eco",
+      "description": "Lower-cost Codex CLI profile for routine edits and quick reviews.",
+      "targets": ["codex"],
+      "codex": {
+        "model": "gpt-5-codex-mini",
+        "model_provider": "openai",
+        "model_reasoning_effort": "medium",
+        "model_verbosity": "low"
+      }
+    },
+    {
+      "id": "codex-standard",
+      "label": "Codex Standard",
+      "description": "Balanced Codex CLI profile for daily implementation work.",
+      "targets": ["codex"],
+      "codex": {
+        "model": "gpt-5.1-codex",
+        "model_provider": "openai",
+        "model_reasoning_effort": "high",
+        "model_verbosity": "medium"
+      }
+    },
+    {
+      "id": "codex-pro",
+      "label": "Codex Pro",
+      "description": "Higher-reasoning Codex CLI profile for architecture, reviews, and difficult fixes.",
+      "targets": ["codex"],
+      "codex": {
+        "model": "gpt-5.5",
+        "model_provider": "openai",
+        "model_reasoning_effort": "xhigh",
+        "model_verbosity": "medium"
+      }
+    },
+    {
+      "id": "codex-openai-api",
+      "label": "Codex OpenAI API",
+      "description": "Example Codex CLI API-key profile that uses OPENAI_API_KEY instead of ChatGPT login state.",
+      "targets": ["codex"],
+      "codex": {
+        "model": "gpt-5.5",
+        "model_provider": "openai-api",
+        "model_reasoning_effort": "high",
+        "model_verbosity": "medium",
+        "provider": {
+          "id": "openai-api",
+          "name": "OpenAI API",
+          "base_url": "https://api.openai.com/v1",
+          "env_key": "OPENAI_API_KEY",
+          "wire_api": "responses"
+        }
+      }
+    },
+    {
+      "id": "opencode-zen",
+      "label": "OpenCode Zen",
+      "description": "OpenCode default profile using the OpenCode-hosted Codex model.",
+      "targets": ["opencode"],
+      "opencode": {
+        "model": "opencode/gpt-5.1-codex",
+        "small_model": "opencode/gpt-5-codex-mini",
+        "agent": {
+          "plan": {
+            "model": "opencode/gpt-5-codex-mini",
+            "temperature": 0.1,
+            "permission": {
+              "edit": "deny",
+              "bash": "deny"
+            }
+          },
+          "build": {
+            "model": "opencode/gpt-5.1-codex",
+            "temperature": 0.2,
+            "permission": {
+              "edit": "allow",
+              "bash": "allow"
+            }
+          },
+          "critic": {
+            "description": "Read-only adversarial reviewer for code quality, regressions, and hidden shortcuts.",
+            "mode": "subagent",
+            "model": "opencode/gpt-5.1-codex",
+            "temperature": 0.1,
+            "permission": {
+              "edit": "deny",
+              "bash": "deny"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "opencode-openrouter-work",
+      "label": "OpenCode OpenRouter Work",
+      "description": "OpenCode profile for a work OpenRouter account. Set OPENROUTER_WORK_API_KEY before use.",
+      "targets": ["opencode"],
+      "opencode": {
+        "model": "openrouter-work/openai/gpt-5.5",
+        "small_model": "openrouter-work/~google/gemini-flash-latest",
+        "provider": {
+          "id": "openrouter-work",
+          "name": "OpenRouter Work",
+          "npm": "@ai-sdk/openai-compatible",
+          "options": {
+            "baseURL": "https://openrouter.ai/api/v1",
+            "apiKey": "{env:OPENROUTER_WORK_API_KEY}"
+          },
+          "models": {
+            "openai/gpt-5.5": {
+              "name": "GPT-5.5"
+            },
+            "~anthropic/claude-sonnet-latest": {
+              "name": "Claude Sonnet Latest"
+            },
+            "~google/gemini-flash-latest": {
+              "name": "Gemini Flash Latest"
+            }
+          }
+        },
+        "agent": {
+          "plan": {
+            "model": "openrouter-work/~anthropic/claude-sonnet-latest",
+            "temperature": 0.1,
+            "permission": {
+              "edit": "deny",
+              "bash": "deny"
+            }
+          },
+          "build": {
+            "model": "openrouter-work/openai/gpt-5.5",
+            "temperature": 0.2,
+            "permission": {
+              "edit": "allow",
+              "bash": "allow"
+            }
+          },
+          "critic": {
+            "description": "Read-only adversarial reviewer for code quality, regressions, and hidden shortcuts.",
+            "mode": "subagent",
+            "model": "openrouter-work/openai/gpt-5.5",
+            "temperature": 0.1,
+            "permission": {
+              "edit": "deny",
+              "bash": "deny"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "opencode-openrouter-personal",
+      "label": "OpenCode OpenRouter Personal",
+      "description": "OpenCode profile for a personal OpenRouter account. Set OPENROUTER_PERSONAL_API_KEY before use.",
+      "targets": ["opencode"],
+      "opencode": {
+        "model": "openrouter-personal/openai/gpt-5.5",
+        "small_model": "openrouter-personal/~google/gemini-flash-latest",
+        "provider": {
+          "id": "openrouter-personal",
+          "name": "OpenRouter Personal",
+          "npm": "@ai-sdk/openai-compatible",
+          "options": {
+            "baseURL": "https://openrouter.ai/api/v1",
+            "apiKey": "{env:OPENROUTER_PERSONAL_API_KEY}"
+          },
+          "models": {
+            "openai/gpt-5.5": {
+              "name": "GPT-5.5"
+            },
+            "~anthropic/claude-sonnet-latest": {
+              "name": "Claude Sonnet Latest"
+            },
+            "~google/gemini-flash-latest": {
+              "name": "Gemini Flash Latest"
+            }
+          }
+        },
+        "agent": {
+          "plan": {
+            "model": "openrouter-personal/~anthropic/claude-sonnet-latest",
+            "temperature": 0.1,
+            "permission": {
+              "edit": "deny",
+              "bash": "deny"
+            }
+          },
+          "build": {
+            "model": "openrouter-personal/openai/gpt-5.5",
+            "temperature": 0.2,
+            "permission": {
+              "edit": "allow",
+              "bash": "allow"
+            }
+          },
+          "critic": {
+            "description": "Read-only adversarial reviewer for code quality, regressions, and hidden shortcuts.",
+            "mode": "subagent",
+            "model": "openrouter-personal/openai/gpt-5.5",
+            "temperature": 0.1,
+            "permission": {
+              "edit": "deny",
+              "bash": "deny"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

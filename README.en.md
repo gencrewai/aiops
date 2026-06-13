@@ -239,6 +239,64 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/codex-uninstal
 
 ---
 
+## Model/Profile Switcher - Codex / OpenCode
+
+Switch Codex CLI and OpenCode models, providers, and account aliases through named profiles.
+
+Profiles do not store secret values. Keep API keys in environment variables or `{file:...}` references; the switcher only updates config files.
+
+### Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/models-install.sh | bash
+```
+
+### Usage
+
+```bash
+# List available profiles
+~/.aiops/aiops-models list
+
+# Preview switching Codex CLI to the standard model
+~/.aiops/aiops-models use codex-standard --dry-run
+
+# Apply for real: backs up and updates ~/.codex/config.toml
+~/.aiops/aiops-models use codex-standard
+
+# Apply an OpenCode work OpenRouter account alias
+export OPENROUTER_WORK_API_KEY="sk-or-..."
+~/.aiops/aiops-models use opencode-openrouter-work
+```
+
+### Built-in Profiles
+
+| Profile | Target | Purpose |
+|---------|--------|---------|
+| `codex-eco` | Codex | Lower-cost routine work |
+| `codex-standard` | Codex | Balanced implementation work |
+| `codex-pro` | Codex | Higher-reasoning design and review |
+| `codex-openai-api` | Codex | Example API-key profile using `OPENAI_API_KEY` |
+| `opencode-zen` | OpenCode | OpenCode-hosted Codex model profile |
+| `opencode-openrouter-work` | OpenCode | Work OpenRouter account alias |
+| `opencode-openrouter-personal` | OpenCode | Personal OpenRouter account alias |
+
+### Files Changed
+
+| Target | File |
+|--------|------|
+| Codex | `~/.codex/config.toml` |
+| OpenCode | `~/.config/opencode/opencode.json` or an existing `opencode.jsonc` |
+
+Existing files are backed up as `*.bak.YYYYMMDDTHHMMSSZ` before writes. `--dry-run` reports the target file without changing it. Inspect profile details with `~/.aiops/aiops-models show <profile>`.
+
+### Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/models-uninstall.sh | bash
+```
+
+---
+
 ## Terminal / tmux - Shared Status
 
 Shows the current project and git state in normal shell prompts and tmux, outside Claude Code or Codex CLI.
@@ -297,6 +355,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-unins
 
 - **Claude Code**: Claude Code CLI with `statusLine` support, plus bash for `.sh` installs or PowerShell for Windows installs
 - **Codex CLI**: Codex CLI v0.1+ with `/statusline` support
+- **Model/Profile Switcher**: Node.js 18+
 - **Terminal / tmux**: zsh or bash, tmux 3.x recommended
 
 ## License
