@@ -199,12 +199,13 @@ Configures Codex CLI's built-in status line with practical default items.
 | `git-branch` | Current git branch |
 | `model-with-reasoning` | Model name + reasoning effort (e.g. `gpt-5.5 (xhigh)`) |
 | `context-used` | Context window usage % |
+| `fast-mode` | Fast mode active indicator (⚡) |
 | `total-input-tokens` | Input tokens (In) |
 | `total-output-tokens` | Output tokens (Out) |
 | `five-hour-limit` | 5-hour rate limit |
 | `weekly-limit` | Weekly rate limit |
 
-> Other available items: `project-name`, `context-remaining`, `used-tokens`, `codex-version`, `task-progress`, `fast-mode`, `thread-title`, etc. Run `codex /statusline` (interactive) or edit `~/.codex/config.toml` to change the mix.
+> Other available items: `project-name`, `context-remaining`, `used-tokens`, `codex-version`, `task-progress`, `thread-title`, `activity`, `run-state`, etc. Run `codex /statusline` (interactive) or edit `~/.codex/config.toml` to change the mix.
 
 ### Install
 
@@ -223,7 +224,7 @@ Add to `~/.codex/config.toml`:
 
 ```toml
 [tui]
-status_line = ["current-dir", "git-branch", "model-with-reasoning", "context-used", "total-input-tokens", "total-output-tokens", "five-hour-limit", "weekly-limit"]
+status_line = ["current-dir", "git-branch", "model-with-reasoning", "context-used", "fast-mode", "total-input-tokens", "total-output-tokens", "five-hour-limit", "weekly-limit"]
 status_line_use_colors = true
 ```
 

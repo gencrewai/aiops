@@ -12,7 +12,7 @@ echo "Installing codex-statusline..."
 mkdir -p "$CODEX_HOME"
 
 # status line items to configure
-STATUS_LINE='["current-dir", "git-branch", "model-with-reasoning", "context-used", "total-input-tokens", "total-output-tokens", "five-hour-limit", "weekly-limit"]'
+STATUS_LINE='["current-dir", "git-branch", "model-with-reasoning", "context-used", "fast-mode", "total-input-tokens", "total-output-tokens", "five-hour-limit", "weekly-limit"]'
 
 if [ -f "$CONFIG_FILE" ]; then
   if grep -q 'status_line' "$CONFIG_FILE" 2>/dev/null; then
