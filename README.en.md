@@ -18,6 +18,7 @@ Two modes and optional flags are available.
 | `lite` | Lite mode (1-line) |
 | `--left` | Switch to remaining capacity bars |
 | `--soft` | Pastel ice-cream colors |
+| `--mask-account` | Mask the logged-in account email (`ma***@gmail.com`) |
 
 Options can be combined freely: `lite --left --soft`
 
@@ -25,12 +26,12 @@ Options can be combined freely: `lite --left --soft`
 
 ```text
 Opus 4.6 │ In:180K Out:54K │ 234K/200K │ $1.23
-my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12
+my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12 │ 👤 you@example.com
 ctx █████░░░ 58% │ 5h █████░░░ 72%(3h42m) │ 7d █████░░░ 65% │ cache 89%
 ```
 
 - `Line 1`: Model, input/output tokens, total tokens/context size, session cost
-- `Line 2`: Project folder, git branch + commit hash, session duration, lines changed
+- `Line 2`: Project folder, git branch + commit hash, session duration, lines changed, logged-in account (👤 email)
 - `Line 3`: Usage bars (`ctx`, `5h`, `7d`), 5h reset remaining time, prompt cache hit rate
 
 With `--left` flag, Line 3 switches to remaining capacity:
@@ -53,7 +54,7 @@ Add the `--soft` flag for ice-cream pastel tone colors. Requires a truecolor (24
 
 ```text
 Opus 4.6 · In:180K Out:54K · 234K/200K · $1.23
-my-project · main a1b2c3d · ⏱ 12m30s · +45 -12
+my-project · main a1b2c3d · ⏱ 12m30s · +45 -12 · 👤 you@example.com
 ctx █████░░░ 58% · 5h █████░░░ 72%(3h42m) · 7d █████░░░ 65% · cache 89%
 ```
 
@@ -167,6 +168,8 @@ Available fields in the JSON input:
 - `cache_read_input_tokens`, `cache_creation_input_tokens`
 - `rate_limits.five_hour.used_percentage`, `rate_limits.seven_day.used_percentage`
 - `workspace.current_dir`, `cwd`
+
+> **Logged-in account (👤)** is not part of the stdin JSON. The script reads `oauthAccount.emailAddress` directly from `~/.claude.json` (or `CLAUDE_CONFIG_DIR` if set) and appends it to Line 2. Use `--mask-account` to mask it (`ma***@gmail.com`); it is omitted when no account is found.
 
 ### Troubleshooting
 
@@ -299,11 +302,13 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/models-uninsta
 
 ## Terminal / tmux - Shared Status
 
-Shows the current project and git state in normal shell prompts and tmux, outside Claude Code or Codex CLI.
+Shows the current project, git state, and logged-in account (Claude) in normal shell prompts and tmux, outside Claude Code or Codex CLI.
 
 ```text
-aiops my-project | main *2
+aiops my-project | main *2 | you@example.com
 ```
+
+Set `AIOPS_MASK_ACCOUNT=1` to mask the email (`ma***@gmail.com`). The account is read from `~/.claude.json` and omitted when absent.
 
 ### Install
 
