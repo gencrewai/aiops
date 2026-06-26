@@ -47,6 +47,26 @@ git_dirty_count() {
   fi
 }
 
+# logged-in Claude account from ~/.claude.json (AIOPS_MASK_ACCOUNT=1 masks it)
+account_email() {
+  local cfg email lp
+  cfg="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+  [ -f "$cfg" ] || cfg="$HOME/.claude.json"
+  [ -f "$cfg" ] || return
+  # strip control chars (incl. ESC) to prevent terminal injection from a crafted config
+  email="$(grep -oE '"emailAddress"[[:space:]]*:[[:space:]]*"[^"]*"' "$cfg" 2>/dev/null \
+    | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/' | tr -d '[:cntrl:]')"
+  [ -n "$email" ] || return
+  if [ "${AIOPS_MASK_ACCOUNT:-0}" = "1" ]; then
+    case "$email" in
+      *@*) lp="${email%%@*}"; printf '%s***@%s' "${lp:0:2}" "${email#*@}" ;;
+      *)   printf '%s' "$email" ;;
+    esac
+  else
+    printf '%s' "$email"
+  fi
+}
+
 project="$(basename "$CWD" 2>/dev/null || printf '?')"
 project="$(truncate_text "$project" 24)"
 
@@ -63,11 +83,14 @@ else
   vcs="no-git"
 fi
 
+acct="$(account_email)"
+
 case "$MODE" in
-  tmux)
-    printf 'aiops %s | %s' "$project" "$vcs"
-    ;;
-  prompt|shell|*)
-    printf 'aiops %s | %s' "$project" "$vcs"
+  tmux|prompt|shell|*)
+    if [ -n "$acct" ]; then
+      printf 'aiops %s | %s | %s' "$project" "$vcs" "$acct"
+    else
+      printf 'aiops %s | %s' "$project" "$vcs"
+    fi
     ;;
 esac

@@ -12,12 +12,14 @@ set -u
 MODE="full"
 VIEW="used"
 THEME="soft"
+MASK_ACCOUNT=0
 
 for arg in "$@"; do
   case "$arg" in
-    lite)    MODE="lite" ;;
-    --left)  VIEW="left" ;;
-    --hard)  THEME="normal" ;;
+    lite)           MODE="lite" ;;
+    --left)         VIEW="left" ;;
+    --hard)         THEME="normal" ;;
+    --mask-account) MASK_ACCOUNT=1 ;;
   esac
 done
 
@@ -63,6 +65,28 @@ int_part() {
   printf '%s' "$n"
 }
 
+# --- account helpers (logged-in Claude account; not present in stdin JSON) ---
+account_config() {
+  local cfg="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+  [ -f "$cfg" ] && { printf '%s' "$cfg"; return; }
+  [ -f "$HOME/.claude.json" ] && printf '%s' "$HOME/.claude.json"
+}
+get_account() {
+  local cfg
+  cfg=$(account_config)
+  [ -n "$cfg" ] || return
+  # strip control chars (incl. ESC) to prevent terminal injection from a crafted config
+  grep -oE '"emailAddress"[[:space:]]*:[[:space:]]*"[^"]*"' "$cfg" 2>/dev/null \
+    | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/' | tr -d '[:cntrl:]'
+}
+mask_email() {
+  local e="$1" lp dom
+  case "$e" in
+    *@*) lp="${e%%@*}"; dom="${e#*@}"; printf '%s***@%s' "${lp:0:2}" "$dom" ;;
+    *)   printf '%s' "$e" ;;
+  esac
+}
+
 # --- data extraction ---
 model_name=$(str_field "display_name")
 [ -z "$model_name" ] && model_name="Claude"
@@ -89,6 +113,8 @@ cwd=$(str_field "current_dir")
 [ -z "$cwd" ] && cwd=$(str_field "cwd")
 project_name=$(basename "$cwd" 2>/dev/null)
 [ -z "$project_name" ] && project_name="?"
+
+account_email=$(get_account)
 
 # rate_limits
 five_pct=$(printf '%s' "$input" | grep -oE '"five_hour"[^}]*' | grep -oE '"used_percentage"[[:space:]]*:[[:space:]]*[0-9.]+' | grep -oE '[0-9.]+$')
@@ -233,7 +259,15 @@ L1="${L1}${WHITE}${tk_display}/${ctx_display}${RST}"
 L1="${L1}${SEP}"
 L1="${L1}💰 ${BOLD}${YELLOW}\$${cost_fmt}${RST}"
 
-# --- compose LINE 2: project + git + session time + changes ---
+# account segment (appended to line 2; only if an account was found)
+account_seg=""
+if [ -n "$account_email" ]; then
+  acct_disp="$account_email"
+  [ "$MASK_ACCOUNT" = "1" ] && acct_disp=$(mask_email "$account_email")
+  account_seg="${SEP}👤 ${WHITE}${acct_disp}${RST}"
+fi
+
+# --- compose LINE 2: project + git + session time + changes + account ---
 L2=""
 L2="${L2}${BLUE}${project_name}${RST}"
 L2="${L2}${SEP}"
@@ -242,6 +276,7 @@ L2="${L2}${SEP}"
 L2="${L2}${MAGENTA}⏱ ${dur_display}${RST}"
 L2="${L2}${SEP}"
 L2="${L2}${GREEN}+${lines_added}${RST} ${RED}-${lines_removed}${RST}"
+L2="${L2}${account_seg}"
 
 # --- compose LINE 3: metrics bars (used or left) ---
 L3=""

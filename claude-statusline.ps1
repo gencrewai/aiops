@@ -5,7 +5,9 @@ param(
 
   [switch]$left,
 
-  [switch]$soft
+  [switch]$soft,
+
+  [switch]$maskAccount
 )
 
 $View = if ($left) { 'left' } else { 'used' }
@@ -188,6 +190,34 @@ function Invoke-GitText {
   return ''
 }
 
+function Get-Account {
+  # logged-in Claude account — not present in stdin JSON, read from config file
+  $cfg = if ($env:CLAUDE_CONFIG_DIR) { Join-Path $env:CLAUDE_CONFIG_DIR '.claude.json' } else { Join-Path $HOME '.claude.json' }
+  if (-not (Test-Path $cfg)) { $cfg = Join-Path $HOME '.claude.json' }
+  if (-not (Test-Path $cfg)) { return '' }
+
+  try {
+    $match = Select-String -Path $cfg -Pattern '"emailAddress"\s*:\s*"([^"]*)"' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($match) {
+      # strip control chars (incl. ESC) to prevent terminal injection from a crafted config
+      return ($match.Matches[0].Groups[1].Value -replace '[\x00-\x1F\x7F]', '')
+    }
+  } catch {
+  }
+
+  return ''
+}
+
+function Mask-Email {
+  param([string]$Email)
+
+  if ($Email -match '^(.{1,2})[^@]*@(.+)$') {
+    return ('{0}***@{1}' -f $Matches[1], $Matches[2])
+  }
+
+  return $Email
+}
+
 $modelName = Get-StringValue $data.model.display_name 'Claude'
 $modelShort = if ($modelName -like 'Claude *') { $modelName.Substring(7) } else { $modelName }
 
@@ -227,6 +257,8 @@ $projectName = if ($cwd) { Split-Path -Leaf $cwd } else { '' }
 if ([string]::IsNullOrWhiteSpace($projectName)) {
   $projectName = if ($cwd) { $cwd } else { '?' }
 }
+
+$accountEmail = Get-Account
 
 $fivePct = Clamp-Percent (Get-IntValue $rateLimits.five_hour.used_percentage 0)
 $fiveReset = Get-IntValue $rateLimits.five_hour.resets_at 0
@@ -287,12 +319,18 @@ $line1 = @(
   "${BOLD}${YELLOW}`$$costFmt${RST}"
 ) -join $SEP
 
+$accountDisplay = if ($maskAccount) { Mask-Email $accountEmail } else { $accountEmail }
+
 $line2Parts = @(
   "${BLUE}${projectName}${RST}"
   "${YELLOW}${gitBranch}${RST} ${DIM}${gitHash}${RST}"
   "${MAGENTA}$([char]0x23F1) ${durDisplay}${RST}"
   "${GREEN}+${linesAdded}${RST} ${RED}-${linesRemoved}${RST}"
 )
+if ($accountEmail) {
+  $person = [char]::ConvertFromUtf32(0x1F464)
+  $line2Parts += "${person} ${WHITE}${accountDisplay}${RST}"
+}
 $line2 = $line2Parts -join $SEP
 
 if ($View -eq 'left') {
