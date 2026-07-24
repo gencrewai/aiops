@@ -31,7 +31,7 @@ ctx █████░░░ 58% │ 5h █████░░░ 72%(3h42m) │ 
 ```
 
 - `Line 1`: Model, input/output tokens, total tokens/context size, session cost
-- `Line 2`: Project folder, git branch + commit hash, session duration, lines changed, logged-in account (👤 email)
+- `Line 2`: Project folder (shown as `repo/folder` inside git worktrees or subdirectories), git branch + commit hash, session duration, lines changed, logged-in account (👤 email)
 - `Line 3`: Usage bars (`ctx`, `5h`, `7d`), 5h reset remaining time, prompt cache hit rate
 
 With `--left` flag, Line 3 switches to remaining capacity:

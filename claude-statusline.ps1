@@ -258,6 +258,20 @@ if ([string]::IsNullOrWhiteSpace($projectName)) {
   $projectName = if ($cwd) { $cwd } else { '?' }
 }
 
+# repo name from the main repo root (resolves worktrees/subdirs); prefixed when it differs
+$gitCommonDir = Invoke-GitText -WorkingDirectory $cwd -Arguments @('rev-parse', '--git-common-dir')
+if (-not [string]::IsNullOrWhiteSpace($gitCommonDir)) {
+  if (-not [System.IO.Path]::IsPathRooted($gitCommonDir)) {
+    $gitCommonDir = Join-Path $cwd $gitCommonDir
+  }
+  # physical resolve so relative segments like ".." don't leak into the name
+  $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $gitCommonDir))
+  $repoName = Split-Path -Leaf $repoRoot
+  if ($repoName -and $repoName -ne $projectName) {
+    $projectName = "$repoName/$projectName"
+  }
+}
+
 $accountEmail = Get-Account
 
 $fivePct = Clamp-Percent (Get-IntValue $rateLimits.five_hour.used_percentage 0)
