@@ -79,6 +79,19 @@ get_account() {
   grep -oE '"emailAddress"[[:space:]]*:[[:space:]]*"[^"]*"' "$cfg" 2>/dev/null \
     | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/' | tr -d '[:cntrl:]'
 }
+# strip C0/C1 control chars (incl. ESC/CSI/OSC) from dir-derived names to
+# prevent terminal injection, while keeping valid multibyte names intact:
+# 1) drop invalid UTF-8 (lone C1 bytes)  2) drop UTF-8-encoded C1 (U+0080–U+009F)
+# 3) drop C0 + DEL
+sanitize_name() {
+  if command -v iconv >/dev/null 2>&1; then
+    # iconv -c drops invalid UTF-8 (lone C1 bytes) while keeping multibyte names
+    iconv -f UTF-8 -t UTF-8 -c 2>/dev/null
+  else
+    # no iconv: drop raw C1 bytes outright (may mangle multibyte names; safe default)
+    LC_ALL=C tr -d '\200-\237'
+  fi | LC_ALL=C sed -E $'s/\xc2[\x80-\x9f]//g' | LC_ALL=C tr -d '[:cntrl:]'
+}
 mask_email() {
   local e="$1" lp dom
   case "$e" in
@@ -111,8 +124,7 @@ cache_create=$(int_part "$(num_field "cache_creation_input_tokens")")
 
 cwd=$(str_field "current_dir")
 [ -z "$cwd" ] && cwd=$(str_field "cwd")
-# strip control chars (incl. ESC) to prevent terminal injection via crafted dir names
-project_name=$(basename "$cwd" 2>/dev/null | tr -d '[:cntrl:]')
+project_name=$(basename "$cwd" 2>/dev/null | sanitize_name)
 [ -z "$project_name" ] && project_name="?"
 
 # repo name from the main repo root (resolves worktrees/subdirs); prefixed when it differs
@@ -125,7 +137,7 @@ if [ -n "$repo_common" ]; then
   esac
   # physical resolve so relative segments like ".." don't leak into the name
   repo_root=$(cd "$(dirname "$repo_common")" 2>/dev/null && pwd)
-  repo_name=$(basename "$repo_root" 2>/dev/null | tr -d '[:cntrl:]')
+  repo_name=$(basename "$repo_root" 2>/dev/null | sanitize_name)
   if [ -n "$repo_name" ] && [ "$repo_name" != "/" ] && [ "$repo_name" != "$project_name" ]; then
     project_name="${repo_name}/${project_name}"
   fi

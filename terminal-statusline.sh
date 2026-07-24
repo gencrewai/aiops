@@ -31,6 +31,20 @@ truncate_text() {
   fi
 }
 
+# strip C0/C1 control chars (incl. ESC/CSI/OSC) from dir-derived names to
+# prevent terminal injection, while keeping valid multibyte names intact:
+# 1) drop invalid UTF-8 (lone C1 bytes)  2) drop UTF-8-encoded C1 (U+0080–U+009F)
+# 3) drop C0 + DEL
+sanitize_name() {
+  if command -v iconv >/dev/null 2>&1; then
+    # iconv -c drops invalid UTF-8 (lone C1 bytes) while keeping multibyte names
+    iconv -f UTF-8 -t UTF-8 -c 2>/dev/null
+  else
+    # no iconv: drop raw C1 bytes outright (may mangle multibyte names; safe default)
+    LC_ALL=C tr -d '\200-\237'
+  fi | LC_ALL=C sed -E $'s/\xc2[\x80-\x9f]//g' | LC_ALL=C tr -d '[:cntrl:]'
+}
+
 git_branch() {
   git -C "$CWD" symbolic-ref --quiet --short HEAD 2>/dev/null \
     || git -C "$CWD" rev-parse --short HEAD 2>/dev/null \
@@ -76,15 +90,13 @@ repo_name() {
     /*) ;;
     *) common="$CWD/$common" ;;
   esac
-  # physical resolve so relative segments like ".." don't leak into the name;
-  # strip control chars (incl. ESC) to prevent terminal injection via crafted dir names
+  # physical resolve so relative segments like ".." don't leak into the name
   root="$(cd "$(dirname "$common")" 2>/dev/null && pwd)"
   [ -n "$root" ] && [ "$root" != "/" ] || return 0
-  basename "$root" 2>/dev/null | tr -d '[:cntrl:]'
+  basename "$root" 2>/dev/null | sanitize_name
 }
 
-# strip control chars (incl. ESC) to prevent terminal injection via crafted dir names
-project="$(basename "$CWD" 2>/dev/null | tr -d '[:cntrl:]')"
+project="$(basename "$CWD" 2>/dev/null | sanitize_name)"
 [ -n "$project" ] || project='?'
 repo="$(repo_name)"
 if [ -n "$repo" ] && [ "$repo" != "$project" ]; then
