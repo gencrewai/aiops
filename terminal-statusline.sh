@@ -76,13 +76,16 @@ repo_name() {
     /*) ;;
     *) common="$CWD/$common" ;;
   esac
-  # physical resolve so relative segments like ".." don't leak into the name
+  # physical resolve so relative segments like ".." don't leak into the name;
+  # strip control chars (incl. ESC) to prevent terminal injection via crafted dir names
   root="$(cd "$(dirname "$common")" 2>/dev/null && pwd)"
   [ -n "$root" ] && [ "$root" != "/" ] || return 0
-  basename "$root" 2>/dev/null
+  basename "$root" 2>/dev/null | tr -d '[:cntrl:]'
 }
 
-project="$(basename "$CWD" 2>/dev/null || printf '?')"
+# strip control chars (incl. ESC) to prevent terminal injection via crafted dir names
+project="$(basename "$CWD" 2>/dev/null | tr -d '[:cntrl:]')"
+[ -n "$project" ] || project='?'
 repo="$(repo_name)"
 if [ -n "$repo" ] && [ "$repo" != "$project" ]; then
   project="${repo}/${project}"

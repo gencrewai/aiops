@@ -111,11 +111,13 @@ cache_create=$(int_part "$(num_field "cache_creation_input_tokens")")
 
 cwd=$(str_field "current_dir")
 [ -z "$cwd" ] && cwd=$(str_field "cwd")
-project_name=$(basename "$cwd" 2>/dev/null)
+# strip control chars (incl. ESC) to prevent terminal injection via crafted dir names
+project_name=$(basename "$cwd" 2>/dev/null | tr -d '[:cntrl:]')
 [ -z "$project_name" ] && project_name="?"
 
 # repo name from the main repo root (resolves worktrees/subdirs); prefixed when it differs
-repo_common=$(git -C "$cwd" rev-parse --git-common-dir 2>/dev/null)
+repo_common=""
+[ -n "$cwd" ] && repo_common=$(git -C "$cwd" rev-parse --git-common-dir 2>/dev/null)
 if [ -n "$repo_common" ]; then
   case "$repo_common" in
     /*) ;;
@@ -123,7 +125,7 @@ if [ -n "$repo_common" ]; then
   esac
   # physical resolve so relative segments like ".." don't leak into the name
   repo_root=$(cd "$(dirname "$repo_common")" 2>/dev/null && pwd)
-  repo_name=$(basename "$repo_root" 2>/dev/null)
+  repo_name=$(basename "$repo_root" 2>/dev/null | tr -d '[:cntrl:]')
   if [ -n "$repo_name" ] && [ "$repo_name" != "/" ] && [ "$repo_name" != "$project_name" ]; then
     project_name="${repo_name}/${project_name}"
   fi
