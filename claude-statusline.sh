@@ -114,6 +114,21 @@ cwd=$(str_field "current_dir")
 project_name=$(basename "$cwd" 2>/dev/null)
 [ -z "$project_name" ] && project_name="?"
 
+# repo name from the main repo root (resolves worktrees/subdirs); prefixed when it differs
+repo_common=$(git -C "$cwd" rev-parse --git-common-dir 2>/dev/null)
+if [ -n "$repo_common" ]; then
+  case "$repo_common" in
+    /*) ;;
+    *) repo_common="$cwd/$repo_common" ;;
+  esac
+  # physical resolve so relative segments like ".." don't leak into the name
+  repo_root=$(cd "$(dirname "$repo_common")" 2>/dev/null && pwd)
+  repo_name=$(basename "$repo_root" 2>/dev/null)
+  if [ -n "$repo_name" ] && [ "$repo_name" != "/" ] && [ "$repo_name" != "$project_name" ]; then
+    project_name="${repo_name}/${project_name}"
+  fi
+fi
+
 account_email=$(get_account)
 
 # rate_limits

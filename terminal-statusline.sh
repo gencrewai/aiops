@@ -67,8 +67,27 @@ account_email() {
   fi
 }
 
+# repo name from the main repo root (resolves worktrees/subdirs)
+repo_name() {
+  local common root
+  common="$(git -C "$CWD" rev-parse --git-common-dir 2>/dev/null)"
+  [ -n "$common" ] || return 0
+  case "$common" in
+    /*) ;;
+    *) common="$CWD/$common" ;;
+  esac
+  # physical resolve so relative segments like ".." don't leak into the name
+  root="$(cd "$(dirname "$common")" 2>/dev/null && pwd)"
+  [ -n "$root" ] && [ "$root" != "/" ] || return 0
+  basename "$root" 2>/dev/null
+}
+
 project="$(basename "$CWD" 2>/dev/null || printf '?')"
-project="$(truncate_text "$project" 24)"
+repo="$(repo_name)"
+if [ -n "$repo" ] && [ "$repo" != "$project" ]; then
+  project="${repo}/${project}"
+fi
+project="$(truncate_text "$project" 32)"
 
 branch="$(git_branch)"
 if [ -n "$branch" ]; then
