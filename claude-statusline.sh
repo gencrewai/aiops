@@ -115,6 +115,22 @@ ctx_size=$(int_part "$(num_field "context_window_size")")
 ctx_pct=$(int_part "$(num_field "used_percentage")")
 cost_usd=$(num_field "total_cost_usd");           [ -z "$cost_usd" ] && cost_usd="0"
 
+# Claude Code's payload may under-report context_window_size as 200K for
+# 1M-context models (fable/mythos, and opus/sonnet "[1m]" variants) — the
+# denominator then reads e.g. "551K/200K". Correct the window from the model id
+# and recompute the pct against it so the ctx bar agrees with the denominator.
+# No-op once the payload reports >= 1M (forward-compatible with an upstream fix).
+model_id=$(printf '%s' "$input" | grep -oE '"model"[[:space:]]*:[[:space:]]*\{[^}]*\}' | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/')
+case "$model_id" in
+  *"[1m]"*|claude-fable-*|claude-mythos-*)
+    if [ "$ctx_size" -lt 1000000 ]; then
+      ctx_size=1000000
+      ctx_pct=$(( (input_tokens + output_tokens) * 100 / ctx_size ))
+      [ "$ctx_pct" -gt 100 ] && ctx_pct=100
+    fi
+    ;;
+esac
+
 duration_ms=$(int_part "$(num_field "total_duration_ms")")
 lines_added=$(int_part "$(num_field "total_lines_added")")
 lines_removed=$(int_part "$(num_field "total_lines_removed")")
@@ -127,7 +143,12 @@ cwd=$(str_field "current_dir")
 project_name=$(basename "$cwd" 2>/dev/null | sanitize_name)
 [ -z "$project_name" ] && project_name="?"
 
-# repo name from the main repo root (resolves worktrees/subdirs); prefixed when it differs
+# repository identity for the project segment — always visible:
+#   origin remote "owner/repo" shown in front of the folder name; the folder
+#   part is omitted when it equals the repo name (avoids "repo/repo" at the
+#   checkout root). Without a usable origin, fall back to the main-repo-root
+#   basename prefix (worktree/subdir only, as before). Outside git the plain
+#   folder name remains.
 repo_common=""
 [ -n "$cwd" ] && repo_common=$(git -C "$cwd" rev-parse --git-common-dir 2>/dev/null)
 if [ -n "$repo_common" ]; then
@@ -138,7 +159,21 @@ if [ -n "$repo_common" ]; then
   # physical resolve so relative segments like ".." don't leak into the name
   repo_root=$(cd "$(dirname "$repo_common")" 2>/dev/null && pwd)
   repo_name=$(basename "$repo_root" 2>/dev/null | sanitize_name)
-  if [ -n "$repo_name" ] && [ "$repo_name" != "/" ] && [ "$repo_name" != "$project_name" ]; then
+  # origin "owner/repo" from https or scp-style URLs; empty when absent/unparsable
+  remote_id=$(git -C "$cwd" remote get-url origin 2>/dev/null \
+    | sed -E 's#\.git/*$##; s#/+$##' \
+    | grep -oE '[^/:]+/[^/:]+$' | sanitize_name)
+  case "$remote_id" in
+    ?*/?*) ;;
+    *) remote_id="" ;;
+  esac
+  if [ -n "$remote_id" ]; then
+    if [ "$project_name" = "${remote_id##*/}" ]; then
+      project_name="$remote_id"
+    else
+      project_name="${remote_id}/${project_name}"
+    fi
+  elif [ -n "$repo_name" ] && [ "$repo_name" != "/" ] && [ "$repo_name" != "$project_name" ]; then
     project_name="${repo_name}/${project_name}"
   fi
 fi
