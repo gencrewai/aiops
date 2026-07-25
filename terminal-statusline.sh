@@ -96,11 +96,33 @@ repo_name() {
   basename "$root" 2>/dev/null | sanitize_name
 }
 
+# origin "owner/repo" from https or scp-style URLs; empty when absent/unparsable
+repo_id() {
+  local url id
+  url="$(git -C "$CWD" remote get-url origin 2>/dev/null)"
+  [ -n "$url" ] || return 0
+  id="$(printf '%s' "$url" | sed -E 's#\.git/*$##; s#/+$##' | grep -oE '[^/:]+/[^/:]+$' | sanitize_name)"
+  case "$id" in
+    ?*/?*) printf '%s' "$id" ;;
+  esac
+}
+
 project="$(basename "$CWD" 2>/dev/null | sanitize_name)"
 [ -n "$project" ] || project='?'
-repo="$(repo_name)"
-if [ -n "$repo" ] && [ "$repo" != "$project" ]; then
-  project="${repo}/${project}"
+# repository identity always visible: origin "owner/repo" (folder omitted when
+# it equals the repo name); fallback to main-repo-root basename prefix.
+rid="$(repo_id)"
+if [ -n "$rid" ]; then
+  if [ "$project" = "${rid##*/}" ]; then
+    project="$rid"
+  else
+    project="${rid}/${project}"
+  fi
+else
+  repo="$(repo_name)"
+  if [ -n "$repo" ] && [ "$repo" != "$project" ]; then
+    project="${repo}/${project}"
+  fi
 fi
 project="$(truncate_text "$project" 32)"
 

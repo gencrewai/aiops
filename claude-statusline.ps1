@@ -243,6 +243,17 @@ $ctxSize = Get-IntValue $ctx.context_window_size 200000
 $ctxPct = Clamp-Percent (Get-IntValue $ctx.used_percentage 0)
 $costUsd = if ($null -eq $cost.total_cost_usd) { 0.0 } else { [double]$cost.total_cost_usd }
 
+# Claude Code's payload may under-report context_window_size as 200K for
+# 1M-context models (fable/mythos, and opus/sonnet "[1m]" variants). Correct
+# the window from the model id and recompute the pct against it so the ctx bar
+# agrees with the denominator. No-op once the payload reports >= 1M.
+$modelId = Get-StringValue $data.model.id ''
+if ($modelId -and $ctxSize -lt 1000000 -and
+    ($modelId.Contains('[1m]') -or $modelId.StartsWith('claude-fable-') -or $modelId.StartsWith('claude-mythos-'))) {
+  $ctxSize = 1000000
+  $ctxPct = Clamp-Percent ([int][math]::Floor((($inputTokens + $outputTokens) * 100.0) / $ctxSize))
+}
+
 $durationMs = Get-IntValue $cost.total_duration_ms 0
 $linesAdded = Get-IntValue $cost.total_lines_added 0
 $linesRemoved = Get-IntValue $cost.total_lines_removed 0
@@ -261,7 +272,10 @@ if ([string]::IsNullOrWhiteSpace($projectName)) {
 $projectName = $projectName -replace '[\x00-\x1F\x7F-\x9F]', ''
 if ([string]::IsNullOrWhiteSpace($projectName)) { $projectName = '?' }
 
-# repo name from the main repo root (resolves worktrees/subdirs); prefixed when it differs
+# repository identity for the project segment — always visible:
+#   origin remote "owner/repo" in front of the folder name; folder part omitted
+#   when it equals the repo name. Without a usable origin, fall back to the
+#   main-repo-root basename prefix (worktree/subdir only, as before).
 $gitCommonDir = Invoke-GitText -WorkingDirectory $cwd -Arguments @('rev-parse', '--git-common-dir')
 if (-not [string]::IsNullOrWhiteSpace($gitCommonDir)) {
   if (-not [System.IO.Path]::IsPathRooted($gitCommonDir)) {
@@ -271,7 +285,24 @@ if (-not [string]::IsNullOrWhiteSpace($gitCommonDir)) {
   # strip control chars (incl. ESC) to prevent terminal injection via crafted dir names
   $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $gitCommonDir))
   $repoName = (Split-Path -Leaf $repoRoot) -replace '[\x00-\x1F\x7F-\x9F]', ''
-  if ($repoName -and $repoName -ne $projectName) {
+  # origin "owner/repo" from https or scp-style URLs; empty when absent/unparsable
+  $remoteId = ''
+  $remoteUrl = Invoke-GitText -WorkingDirectory $cwd -Arguments @('remote', 'get-url', 'origin')
+  if (-not [string]::IsNullOrWhiteSpace($remoteUrl)) {
+    $trimmed = ($remoteUrl -replace '\.git/*$', '') -replace '/+$', ''
+    if ($trimmed -match '([^/:]+/[^/:]+)$') {
+      $candidate = $Matches[1] -replace '[\x00-\x1F\x7F-\x9F]', ''
+      if ($candidate -match '^[^/]+/[^/]+$') { $remoteId = $candidate }
+    }
+  }
+  if ($remoteId) {
+    $remoteRepo = $remoteId.Split('/')[-1]
+    if ($projectName -eq $remoteRepo) {
+      $projectName = $remoteId
+    } else {
+      $projectName = "$remoteId/$projectName"
+    }
+  } elseif ($repoName -and $repoName -ne $projectName) {
     $projectName = "$repoName/$projectName"
   }
 }
