@@ -116,7 +116,7 @@ redact_secretish() {
     -e 's/xapp-[A-Za-z0-9-]{10,}/■■■/g' \
     -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]{10,}/■■■/g' \
     -e 's/([Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+)[^[:space:]]+/\1■■■/g' \
-    -e "s/([A-Za-z_-]*([Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww]?[Oo]?[Rr]?[Dd]?)[A-Za-z_-]*[\"']?[[:space:]]*[=:])[[:space:]]*(\"[^\"]*\"|'[^']*'|[^[:space:]\"']+)/\1■■■/g"
+    -e "s/([A-Za-z0-9_-]*([Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww]?[Oo]?[Rr]?[Dd]?|[Pp][Ww][Dd]?|[Cc][Rr][Ee][Dd][A-Za-z]*)[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:]).*/\1■■■/"
 }
 # minimal JSON string unescape for display, then control-char sanitize + redaction
 decode_json_str() {
