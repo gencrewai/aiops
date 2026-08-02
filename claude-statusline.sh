@@ -103,9 +103,24 @@ mask_email() {
 }
 
 # --- task-context helpers (session title / current work / edited repos) ---
-# minimal JSON string unescape for display, then control-char sanitize
+# mask secret-looking spans before display (statusline is screenshot/share surface):
+# known token prefixes + key/token/secret/password-style assignments
+redact_secretish() {
+  sed -E \
+    -e 's/sk-[A-Za-z0-9_-]{8,}/■■■/g' \
+    -e 's/(ghp|gho|ghu|ghs)_[A-Za-z0-9]{16,}/■■■/g' \
+    -e 's/github_pat_[A-Za-z0-9_]{20,}/■■■/g' \
+    -e 's/glpat-[A-Za-z0-9_-]{10,}/■■■/g' \
+    -e 's/(AKIA|ASIA)[0-9A-Z]{12,}/■■■/g' \
+    -e 's/xox[a-z]-[A-Za-z0-9-]{10,}/■■■/g' \
+    -e 's/xapp-[A-Za-z0-9-]{10,}/■■■/g' \
+    -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]{10,}/■■■/g' \
+    -e 's/([Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+)[^[:space:]]+/\1■■■/g' \
+    -e "s/([A-Za-z_-]*([Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww]?[Oo]?[Rr]?[Dd]?)[A-Za-z_-]*[\"']?[[:space:]]*[=:])[[:space:]]*(\"[^\"]*\"|'[^']*'|[^[:space:]\"']+)/\1■■■/g"
+}
+# minimal JSON string unescape for display, then control-char sanitize + redaction
 decode_json_str() {
-  sed -E 's/\\[nrt]/ /g; s/\\"/"/g; s/\\\\/\\/g' | sanitize_name
+  sed -E 's/\\[nrt]/ /g; s/\\"/"/g; s/\\\\/\\/g' | sanitize_name | redact_secretish
 }
 # value of the first/last JSON string field "$1" in the blob on stdin
 json_field_first() {
@@ -238,35 +253,35 @@ task_repos=""
 if [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
   t_tail=$(tail -c 65536 "$transcript_path" 2>/dev/null)
 
-  # session title: explicit session_name → latest auto ai-title → first user prompt
+  # session title: explicit session_name → latest auto ai-title.
+  # no raw-prompt fallback: a first prompt may carry secrets and can be an
+  # unbounded line (CPU per refresh) — the title slot shows curated summaries only
   [ -z "$task_title" ] && task_title=$(printf '%s' "$t_tail" | json_field_last "aiTitle")
-  if [ -z "$task_title" ]; then
-    # -m1: stop at the first user entry — streaming, no byte-boundary cut on multibyte text
-    first_user_line=$(grep -m1 '"type":"user"' "$transcript_path" 2>/dev/null)
-    task_title=$(printf '%s' "$first_user_line" | json_field_first "content")
-    # array-form message content: fall back to its first text block
-    [ -z "$task_title" ] && task_title=$(printf '%s' "$first_user_line" | json_field_first "text")
-  fi
 
-  # current work: in-progress task (~/.claude/tasks) → todo (~/.claude/todos) → latest prompt
+  # current work: in-progress task (tasks store) → todo store — curated metadata only
   if [ -n "$session_id" ]; then
-    task_dir="$HOME/.claude/tasks/$session_id"
-    if [ -d "$task_dir" ]; then
+    tc_base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+    [ -d "$tc_base/todos" ] || [ -d "$tc_base/tasks" ] || tc_base="$HOME/.claude"
+    tc_task_dir="$tc_base/tasks/$session_id"
+    if [ -d "$tc_task_dir" ]; then
       while IFS= read -r tf; do
         [ -f "$tf" ] || continue
-        flat=$(tr -d '\n' < "$tf" 2>/dev/null)
+        # byte-bound the read (runaway file guard); split multibyte at the
+        # boundary is dropped downstream by decode_json_str → sanitize_name
+        flat=$(tail -c 16384 "$tf" 2>/dev/null | tr -d '\n')
         printf '%s' "$flat" | grep -qE '"status"[[:space:]]*:[[:space:]]*"in_progress"' || continue
         task_now=$(printf '%s' "$flat" | json_field_first "activeForm")
         [ -z "$task_now" ] && task_now=$(printf '%s' "$flat" | json_field_first "subject")
         [ -n "$task_now" ] && break
       done <<EOF_TASKS
-$(ls -t "$task_dir"/*.json 2>/dev/null)
+$(ls -t "$tc_task_dir"/*.json 2>/dev/null)
 EOF_TASKS
     fi
     if [ -z "$task_now" ]; then
-      for tf in "$HOME/.claude/todos/$session_id"*.json; do
+      for tf in "$tc_base/todos/$session_id"*.json; do
         [ -f "$tf" ] || continue
-        todo_obj=$(tr -d '\n' < "$tf" 2>/dev/null | grep -oE '\{[^{}]*"in_progress"[^{}]*\}' | tail -n1)
+        # byte-bound as above — the newest todos sit at the array tail anyway
+        todo_obj=$(tail -c 16384 "$tf" 2>/dev/null | tr -d '\n' | grep -oE '\{[^{}]*"in_progress"[^{}]*\}' | tail -n1)
         [ -n "$todo_obj" ] || continue
         task_now=$(printf '%s' "$todo_obj" | json_field_first "activeForm")
         [ -z "$task_now" ] && task_now=$(printf '%s' "$todo_obj" | json_field_first "content")
@@ -274,7 +289,8 @@ EOF_TASKS
       done
     fi
   fi
-  [ -z "$task_now" ] && task_now=$(printf '%s' "$t_tail" | json_field_last "lastPrompt")
+  # no lastPrompt fallback: raw prompts are uncurated text on a share surface —
+  # the current-work slot renders task/todo metadata only
 
   # repos edited this session: Edit/Write file paths → repo names, recent first, max 3
   edit_paths=$(printf '%s' "$t_tail" \
