@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code statusLine — 3-line or 1-line status bar
+# Claude Code statusLine — 3/4-line or 1-line status bar
+# The task-context line (📋 session title │ ▶ current work │ ✎ edited repos)
+# appears automatically when transcript/session data is available.
 # Usage: bash statusline.sh               → 3-line, soft pastel (default)
 #        bash statusline.sh lite           → 1-line
 #        bash statusline.sh --left         → 3-line, remaining bars
@@ -100,6 +102,31 @@ mask_email() {
   esac
 }
 
+# --- task-context helpers (session title / current work / edited repos) ---
+# minimal JSON string unescape for display, then control-char sanitize
+decode_json_str() {
+  sed -E 's/\\[nrt]/ /g; s/\\"/"/g; s/\\\\/\\/g' | sanitize_name
+}
+# value of the first/last JSON string field "$1" in the blob on stdin
+json_field_first() {
+  grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" | head -n1 \
+    | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//; s/"$//' | decode_json_str
+}
+json_field_last() {
+  grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" | tail -n1 \
+    | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//; s/"$//' | decode_json_str
+}
+truncate_str() {
+  local s="$1" n="${2:-40}"
+  if [ "${#s}" -gt "$n" ]; then
+    # re-sanitize after the cut in case a multibyte char was split
+    printf '%s' "${s:0:$n}" | sanitize_name
+    printf '…'
+  else
+    printf '%s' "$s"
+  fi
+}
+
 # --- data extraction ---
 model_name=$(str_field "display_name")
 [ -z "$model_name" ] && model_name="Claude"
@@ -175,6 +202,111 @@ if [ -n "$repo_common" ]; then
     fi
   elif [ -n "$repo_name" ] && [ "$repo_name" != "/" ] && [ "$repo_name" != "$project_name" ]; then
     project_name="${repo_name}/${project_name}"
+  fi
+fi
+
+# --- task context: session title / current work / repos edited this session ---
+transcript_path=$(str_field "transcript_path")
+session_id=$(str_field "session_id")
+
+# trust boundary: stdin is harness-produced, but never trust paths from it.
+# session_id must be a full UUID (it feeds glob paths — a short prefix would
+# match other sessions' files); transcript_path must be that session's own
+# <session_id>.jsonl: a regular non-symlink file whose canonicalized (pwd -P)
+# directory sits under the Claude projects dir.
+printf '%s' "$session_id" \
+  | grep -qE '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$' || session_id=""
+claude_projects_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
+tp_ok=""
+if [ -n "$session_id" ] && [ -n "$transcript_path" ] \
+  && [ -f "$transcript_path" ] && [ ! -L "$transcript_path" ] \
+  && [ "$(basename "$transcript_path")" = "${session_id}.jsonl" ]; then
+  proj_real=$(cd "$claude_projects_dir" 2>/dev/null && pwd -P)
+  tp_dir=$(cd "$(dirname "$transcript_path")" 2>/dev/null && pwd -P)
+  if [ -n "$proj_real" ] && [ -n "$tp_dir" ]; then
+    case "$tp_dir" in
+      "$proj_real"|"$proj_real"/*) tp_ok=1 ;;
+    esac
+  fi
+fi
+[ -n "$tp_ok" ] || transcript_path=""
+
+task_title=$(str_field "session_name" | decode_json_str)
+task_now=""
+task_repos=""
+
+if [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
+  t_tail=$(tail -c 65536 "$transcript_path" 2>/dev/null)
+
+  # session title: explicit session_name → latest auto ai-title → first user prompt
+  [ -z "$task_title" ] && task_title=$(printf '%s' "$t_tail" | json_field_last "aiTitle")
+  if [ -z "$task_title" ]; then
+    # -m1: stop at the first user entry — streaming, no byte-boundary cut on multibyte text
+    first_user_line=$(grep -m1 '"type":"user"' "$transcript_path" 2>/dev/null)
+    task_title=$(printf '%s' "$first_user_line" | json_field_first "content")
+    # array-form message content: fall back to its first text block
+    [ -z "$task_title" ] && task_title=$(printf '%s' "$first_user_line" | json_field_first "text")
+  fi
+
+  # current work: in-progress task (~/.claude/tasks) → todo (~/.claude/todos) → latest prompt
+  if [ -n "$session_id" ]; then
+    task_dir="$HOME/.claude/tasks/$session_id"
+    if [ -d "$task_dir" ]; then
+      while IFS= read -r tf; do
+        [ -f "$tf" ] || continue
+        flat=$(tr -d '\n' < "$tf" 2>/dev/null)
+        printf '%s' "$flat" | grep -qE '"status"[[:space:]]*:[[:space:]]*"in_progress"' || continue
+        task_now=$(printf '%s' "$flat" | json_field_first "activeForm")
+        [ -z "$task_now" ] && task_now=$(printf '%s' "$flat" | json_field_first "subject")
+        [ -n "$task_now" ] && break
+      done <<EOF_TASKS
+$(ls -t "$task_dir"/*.json 2>/dev/null)
+EOF_TASKS
+    fi
+    if [ -z "$task_now" ]; then
+      for tf in "$HOME/.claude/todos/$session_id"*.json; do
+        [ -f "$tf" ] || continue
+        todo_obj=$(tr -d '\n' < "$tf" 2>/dev/null | grep -oE '\{[^{}]*"in_progress"[^{}]*\}' | tail -n1)
+        [ -n "$todo_obj" ] || continue
+        task_now=$(printf '%s' "$todo_obj" | json_field_first "activeForm")
+        [ -z "$task_now" ] && task_now=$(printf '%s' "$todo_obj" | json_field_first "content")
+        [ -n "$task_now" ] && break
+      done
+    fi
+  fi
+  [ -z "$task_now" ] && task_now=$(printf '%s' "$t_tail" | json_field_last "lastPrompt")
+
+  # repos edited this session: Edit/Write file paths → repo names, recent first, max 3
+  edit_paths=$(printf '%s' "$t_tail" \
+    | grep -E '"name"[[:space:]]*:[[:space:]]*"(Edit|Write|MultiEdit|NotebookEdit)"' \
+    | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | sed -E 's/.*:[[:space:]]*"//; s/"$//' | tail -n 20)
+  if [ -n "$edit_paths" ]; then
+    edit_dirs=$(printf '%s\n' "$edit_paths" \
+      | awk '{a[NR]=$0} END{for(i=NR;i>=1;i--)print a[i]}' \
+      | while IFS= read -r p; do dirname "$p" 2>/dev/null; done \
+      | awk '!seen[$0]++' | head -n 8)
+    seen_repos="|"
+    rcount=0
+    while IFS= read -r d; do
+      [ -n "$d" ] && [ -d "$d" ] || continue
+      repo_gc=$(git -C "$d" rev-parse --git-common-dir 2>/dev/null) || continue
+      [ -n "$repo_gc" ] || continue
+      case "$repo_gc" in
+        /*) ;;
+        *) repo_gc="$d/$repo_gc" ;;
+      esac
+      rr=$(cd "$(dirname "$repo_gc")" 2>/dev/null && pwd) || continue
+      rn=$(basename "$rr" 2>/dev/null | sanitize_name)
+      [ -n "$rn" ] && [ "$rn" != "/" ] || continue
+      case "$seen_repos" in *"|$rn|"*) continue ;; esac
+      seen_repos="${seen_repos}${rn}|"
+      if [ -z "$task_repos" ]; then task_repos="$rn"; else task_repos="${task_repos}·${rn}"; fi
+      rcount=$((rcount+1))
+      if [ "$rcount" -ge 3 ]; then break; fi
+    done <<EOF_DIRS
+$edit_dirs
+EOF_DIRS
   fi
 fi
 
@@ -342,6 +474,20 @@ L2="${L2}${SEP}"
 L2="${L2}${GREEN}+${lines_added}${RST} ${RED}-${lines_removed}${RST}"
 L2="${L2}${account_seg}"
 
+# --- compose task line: 📋 session title │ ▶ current work │ ✎ edited repos ---
+LT=""
+if [ -n "$task_title" ] || [ -n "$task_now" ] || [ -n "$task_repos" ]; then
+  [ -n "$task_title" ] && LT="📋 ${WHITE}$(truncate_str "$task_title" 40)${RST}"
+  if [ -n "$task_now" ]; then
+    [ -n "$LT" ] && LT="${LT}${SEP}"
+    LT="${LT}${GREEN}▶${RST} ${WHITE}$(truncate_str "$task_now" 40)${RST}"
+  fi
+  if [ -n "$task_repos" ]; then
+    [ -n "$LT" ] && LT="${LT}${SEP}"
+    LT="${LT}${MAGENTA}✎ ${task_repos}${RST}"
+  fi
+fi
+
 # --- compose LINE 3: metrics bars (used or left) ---
 L3=""
 if [ "$VIEW" = "left" ]; then
@@ -393,5 +539,9 @@ if [ "$MODE" = "lite" ]; then
   fi
   printf '%s' "$LITE"
 else
-  printf '%s\n%s\n%s' "$L1" "$L2" "$L3"
+  if [ -n "$LT" ]; then
+    printf '%s\n%s\n%s\n%s' "$L1" "$L2" "$LT" "$L3"
+  else
+    printf '%s\n%s\n%s' "$L1" "$L2" "$L3"
+  fi
 fi
