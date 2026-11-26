@@ -205,8 +205,8 @@ get_teamclaude_account() {
   if [ $(( now - mtime )) -ge 8 ]; then
     # always run under a timeout so a hung teamclaude never stalls the statusline;
     # if no timeout tool exists, skip the live fetch and fall back to cache/.claude.json
-    if command -v timeout >/dev/null 2>&1; then tc=$(timeout 2 "$tcbin" status 2>/dev/null)
-    elif command -v gtimeout >/dev/null 2>&1; then tc=$(gtimeout 2 "$tcbin" status 2>/dev/null)
+    if command -v timeout >/dev/null 2>&1; then tc=$(timeout -k 1 2 "$tcbin" status 2>/dev/null)
+    elif command -v gtimeout >/dev/null 2>&1; then tc=$(gtimeout -k 1 2 "$tcbin" status 2>/dev/null)
     else tc=""; fi
     # strip control chars (incl. ESC) to prevent terminal injection
     acct=$(printf '%s' "$tc" | grep -m1 -E '^Active account:' | sed -E 's/^Active account:[[:space:]]*//' | tr -d '[:cntrl:]')

@@ -10,19 +10,20 @@
 
 ![Claude Code 상태 바](./assets/claude-statusline.png)
 
-두 가지 모드와 옵션 플래그를 지원합니다.
+두 가지 모드와 옵션 플래그를 지원합니다. bash 판(`.sh`)과 PowerShell 판(`.ps1`)은 플래그 표기와 기본 색이 다릅니다.
 
-| 옵션 | 설명 |
-|------|------|
-| (기본) | Full 모드 (3줄), 사용량 바 |
-| `lite` | Lite 모드 (1줄) |
-| `--left` | 남은 용량 바로 전환 |
-| `--soft` | 파스텔 아이스크림 색상 |
-| `--mask-account` | 로그인 계정 이메일을 마스킹 표시 (`ma***@gmail.com`) |
+| bash (`.sh`) | PowerShell (`.ps1`) | 설명 |
+|------|------|------|
+| (기본) | (기본) | Full 모드 (3~4줄), 사용량 바 |
+| `lite` | `lite` | Lite 모드 (1줄) |
+| `--left` | `-left` | 남은 용량 바로 전환 |
+| (기본) | `-soft` | 파스텔 아이스크림 색상 |
+| `--hard` | (기본) | 기본 ANSI 색상 |
+| `--mask-account` | `-maskAccount` | 로그인 계정 이메일을 마스킹 표시 (`ma***@gmail.com`) |
 
-옵션은 자유롭게 조합 가능합니다: `lite --left --soft`
+옵션은 자유롭게 조합할 수 있습니다. bash는 `lite --left --hard`, PowerShell은 `lite -left -soft`처럼 씁니다.
 
-### Full 모드 (3줄, 기본)
+### Full 모드 (3~4줄, 기본)
 
 ```text
 Opus 4.6 │ In:180K Out:54K │ 234K/200K │ $1.23
@@ -38,7 +39,7 @@ ctx █████░░░ 58% │ 5h █████░░░ 72%(3h42m) │ 
 
 할 일 진행과 서브에이전트 수는 이번 세션에 할 일이나 서브에이전트가 있을 때만 나옵니다.
 
-`--left` 플래그 사용 시 3줄이 남은 용량 표시로 전환됩니다:
+`--left` 플래그를 쓰면 마지막 줄이 남은 용량 표시로 바뀝니다:
 
 ```text
 ctx left ███░░░░░ 42% │ 5h left ██░░░░░░ 28%(3h42m) │ 7d left ██░░░░░░ 35% │ cache 89%
@@ -52,17 +53,17 @@ my-project │ main │ Opus 4.6 │ 5h █████░░░ 72% │ 7d █�
 
 폴더, 브랜치, 모델, 5시간/7일 사용량만 보여주는 간단 모드입니다. `--left` 사용 시 남은 용량으로 전환됩니다.
 
-### --soft (파스텔 색상)
+### 색상 테마 (파스텔 / 기본 ANSI)
 
-`--soft` 플래그를 추가하면 아이스크림 파스텔 톤 색상이 적용됩니다. 트루컬러(24bit) 지원 터미널이 필요합니다.
+bash 판은 아이스크림 파스텔 톤이 기본이고, 트루컬러(24bit) 지원 터미널이 필요합니다. 트루컬러가 안 되는 터미널에서는 `--hard`로 기본 ANSI 색상을 쓰세요. 두 테마 모두 구분자는 `│`입니다.
+
+PowerShell 판은 기본 ANSI 색상으로 시작하고, `-soft`를 붙이면 파스텔 톤이 됩니다. 이때 구분자도 `|`에서 `·`로 바뀝니다. 아래는 PowerShell `-soft` 출력 예입니다.
 
 ```text
 Opus 4.6 · In:180K Out:54K · 234K/200K · $1.23
 my-project · main a1b2c3d · ⏱ 12m30s · +45 -12 · 👤 you@example.com
 ctx █████░░░ 58% · 5h █████░░░ 72%(3h42m) · 7d █████░░░ 65% · cache 89%
 ```
-
-구분자가 `│`에서 `·`로, 색상이 파스텔 톤으로 변경됩니다.
 
 ### 색상 기준
 
@@ -75,7 +76,7 @@ ctx █████░░░ 58% · 5h █████░░░ 72%(3h42m) · 7d
 ### 설치
 
 ```bash
-# macOS / Linux / Git Bash - Full 모드 (3줄, 기본)
+# macOS / Linux / Git Bash - Full 모드 (3~4줄, 기본)
 curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/install.sh | bash
 
 # macOS / Linux / Git Bash - Lite 모드 (1줄)
@@ -83,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/install.sh | b
 ```
 
 ```powershell
-# Windows PowerShell - Full 모드 (3줄, 기본)
+# Windows PowerShell - Full 모드 (3~4줄, 기본)
 $script = Join-Path $env:TEMP 'aiops-install.ps1'
 Invoke-WebRequest https://raw.githubusercontent.com/gencrewai/aiops/main/install.ps1 -OutFile $script
 powershell -NoProfile -ExecutionPolicy Bypass -File $script
@@ -118,7 +119,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File $script -Mode lite
 {
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/claude-statusline.sh lite --left --soft"
+    "command": "~/.claude/claude-statusline.sh lite --left --hard"
   }
 }
 ```
@@ -143,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File $script -Mode lite
 {
   "statusLine": {
     "type": "command",
-    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/username/.claude/claude-statusline.ps1 lite --left --soft"
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/username/.claude/claude-statusline.ps1 lite -left -soft"
   }
 }
 ```
@@ -171,12 +172,14 @@ JSON 입력에서 사용 가능한 필드:
 - `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`
 - `cache_read_input_tokens`, `cache_creation_input_tokens`
 - `rate_limits.five_hour.used_percentage`, `rate_limits.seven_day.used_percentage`
-- `effort.level` (추론 강도, Opus 4.5+ — `high`/`medium`/`low`) — 모델명 뒤에 🧠 아이콘으로 표시
+- `effort.level` (추론 강도, Opus 4.5+, 값은 `high`/`medium`/`low`): 모델명 뒤에 🧠 아이콘으로 표시
 - `workspace.current_dir`, `cwd`
+- `model.id`: 1M 컨텍스트 모델(`[1m]`, fable/mythos)인데 창 크기가 200K로 오면 1M으로 보정
+- `session_id`, `transcript_path`, `session_name`: 작업 줄과 할 일 진행·서브에이전트 수 계산에 사용
 
-> **로그인 계정(👤)** 은 stdin JSON에 포함되지 않습니다. 스크립트가 `~/.claude.json`(`CLAUDE_CONFIG_DIR` 설정 시 해당 경로)의 `oauthAccount.emailAddress`를 직접 읽어 2줄 끝에 표시합니다. `--mask-account` 플래그로 마스킹(`ma***@gmail.com`)할 수 있고, 계정 정보가 없으면 생략됩니다.
+> **로그인 계정(👤)** 은 stdin JSON에 포함되지 않습니다. 스크립트가 `~/.claude.json`(`CLAUDE_CONFIG_DIR`를 설정했으면 그 경로)의 `oauthAccount.emailAddress`를 직접 읽어 2줄 끝에 표시합니다. `--mask-account`(PowerShell은 `-maskAccount`) 플래그로 마스킹(`ma***@gmail.com`)할 수 있고, 계정 정보가 없으면 생략됩니다.
 >
-> **여러 계정을 돌려 쓰는 중계 서버**를 거치면 실제로 쓰인 계정이 `~/.claude.json`과 다를 수 있습니다. 세션의 `ANTHROPIC_BASE_URL`이 이 컴퓨터의 중계 포트를 가리키면 그 중계가 마지막에 쓴 계정을 보여 주고, 계정 뒤에 `⇄tai`(TeamAI) 또는 `⇄tc`(teamclaude)를 붙입니다. TeamAI는 자기 상태 파일만 읽고, teamclaude는 고정된 설치 위치의 실행 파일만 2초 제한으로 실행합니다. Windows 판은 teamclaude만 지원합니다.
+> **여러 계정을 돌려 쓰는 중계 서버**를 거치면 실제로 쓰인 계정이 `~/.claude.json`과 다를 수 있습니다. 세션의 `ANTHROPIC_BASE_URL`이 이 컴퓨터의 중계 포트를 가리키면 그 중계가 마지막에 쓴 계정을 보여 주고, 계정 뒤에 `⇄tai`(TeamAI) 또는 `⇄tc`(teamclaude)를 붙입니다. TeamAI는 자기 상태 파일만 읽고, teamclaude는 고정된 설치 위치의 실행 파일만 2초 제한으로 실행하고, 그 뒤에도 끝나지 않으면 1초 뒤 강제 종료합니다. Windows 판은 teamclaude만 지원합니다.
 >
 > **할 일 진행(✓)·서브에이전트 수(🤖)** 는 `~/.claude/tasks/<세션 ID>/`와 `~/.claude/todos/`의 파일 수로 셉니다.
 >
