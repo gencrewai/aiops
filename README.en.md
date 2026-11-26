@@ -26,13 +26,17 @@ Options can be combined freely: `lite --left --soft`
 
 ```text
 Opus 4.6 │ In:180K Out:54K │ 234K/200K │ $1.23
-my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12 │ 👤 you@example.com
+my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12 │ ✓3/5 │ 🤖2 │ 👤 you@example.com
+🏷 my-laptop-ea │ 📋 Fix checkout screen │ ▶ Writing tests │ ✎ web-app
 ctx █████░░░ 58% │ 5h █████░░░ 72%(3h42m) │ 7d █████░░░ 65% │ cache 89%
 ```
 
 - `Line 1`: Model, input/output tokens, total tokens/context size, session cost
-- `Line 2`: Repository identity (origin `owner/repo`, with the folder appended as `owner/repo/folder` inside git worktrees or subdirectories; plain folder name outside git), git branch + commit hash, session duration, lines changed, logged-in account (👤 email)
-- `Line 3`: Usage bars (`ctx`, `5h`, `7d`), 5h reset remaining time, prompt cache hit rate
+- `Line 2`: Repository identity (origin `owner/repo`, with the folder appended as `owner/repo/folder` inside git worktrees or subdirectories; plain folder name outside git), git branch + commit hash, session duration, lines changed, task progress (✓done/total), subagent count (🤖), logged-in account (👤 email)
+- `Task line`: session name (🏷), session title (📋), current work (▶), repos edited this session (✎). Omitted when none of these is available, leaving 3 lines.
+- `Last line`: Usage bars (`ctx`, `5h`, `7d`), 5h reset remaining time, prompt cache hit rate
+
+Task progress and the subagent count appear only when this session has tasks or subagents.
 
 With `--left` flag, Line 3 switches to remaining capacity:
 
@@ -170,6 +174,12 @@ Available fields in the JSON input:
 - `workspace.current_dir`, `cwd`
 
 > **Logged-in account (👤)** is not part of the stdin JSON. The script reads `oauthAccount.emailAddress` directly from `~/.claude.json` (or `CLAUDE_CONFIG_DIR` if set) and appends it to Line 2. Use `--mask-account` to mask it (`ma***@gmail.com`); it is omitted when no account is found.
+>
+> **Through a multi-account relay** the account actually used can differ from `~/.claude.json`. When the session's `ANTHROPIC_BASE_URL` points at a relay port on this machine, the statusline shows the account that relay used last and appends `⇄tai` (TeamAI) or `⇄tc` (teamclaude). TeamAI is read from its state files only; teamclaude runs only from fixed install locations with a 2s timeout. The Windows script supports teamclaude only.
+>
+> **Task progress (✓) and subagent count (🤖)** are counted from files under `~/.claude/tasks/<session id>/` and `~/.claude/todos/`.
+>
+> **The task line** reads the session transcript (`transcript_path`) and the per-session registry Claude Code keeps at `~/.claude/sessions/<pid>.json`. Only the session's own transcript under `~/.claude/projects/` is read. Title and current work come from curated summaries (session name, auto title, task wording), never raw prompts, and token-like values are masked as `■■■`. The task line is bash-only for now.
 
 ### Troubleshooting
 
@@ -360,6 +370,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-unins
 ## Requirements
 
 - **Claude Code**: Claude Code CLI with `statusLine` support, plus bash for `.sh` installs or PowerShell for Windows installs
+  - The session name (🏷) and TeamAI account need python3 at a fixed location (`/opt/homebrew/bin`, `/usr/local/bin`, CommandLineTools, or `/usr/bin` outside macOS); without it only those items are skipped.
 - **Codex CLI**: Codex CLI v0.1+ with `/statusline` support
 - **Model/Profile Switcher**: Node.js 18+
 - **Terminal / tmux**: zsh or bash, tmux 3.x recommended

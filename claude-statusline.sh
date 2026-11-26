@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code statusLine — 3/4-line or 1-line status bar
-# The task-context line (📋 session title │ ▶ current work │ ✎ edited repos)
-# appears automatically when transcript/session data is available.
+# The task-context line (🏷 peer name │ 📋 session title │ ▶ current work │
+# ✎ edited repos) appears automatically when transcript/session data is available.
 # Usage: bash statusline.sh               → 3-line, soft pastel (default)
 #        bash statusline.sh lite           → 1-line
 #        bash statusline.sh --left         → 3-line, remaining bars
@@ -81,6 +81,14 @@ get_account() {
   grep -oE '"emailAddress"[[:space:]]*:[[:space:]]*"[^"]*"' "$cfg" 2>/dev/null \
     | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/' | tr -d '[:cntrl:]'
 }
+mask_email() {
+  local e="$1" lp dom
+  case "$e" in
+    *@*) lp="${e%%@*}"; dom="${e#*@}"; printf '%s***@%s' "${lp:0:2}" "$dom" ;;
+    *)   printf '%s' "$e" ;;
+  esac
+}
+
 # strip C0/C1 control chars (incl. ESC/CSI/OSC) from dir-derived names to
 # prevent terminal injection, while keeping valid multibyte names intact:
 # 1) drop invalid UTF-8 (lone C1 bytes)  2) drop UTF-8-encoded C1 (U+0080–U+009F)
@@ -94,15 +102,141 @@ sanitize_name() {
     LC_ALL=C tr -d '\200-\237'
   fi | LC_ALL=C sed -E $'s/\xc2[\x80-\x9f]//g' | LC_ALL=C tr -d '[:cntrl:]'
 }
-mask_email() {
-  local e="$1" lp dom
-  case "$e" in
-    *@*) lp="${e%%@*}"; dom="${e#*@}"; printf '%s***@%s' "${lp:0:2}" "$dom" ;;
-    *)   printf '%s' "$e" ;;
+
+# --- TeamAI relay: last account used ---
+# TeamAI rotates accounts per request across every session on this machine, so
+# the closest live answer is the Claude account it used last. Read it from
+# TeamAI's own state files; no TeamAI executable runs. Only when this session's
+# base URL is one of TeamAI's loopback Claude ports and its server pid is alive.
+teamai_home() { printf '%s' "${TEAMAI_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/teamai}"; }
+# The interpreter comes only from fixed absolute locations, never $PATH (this
+# runs on every render). macOS's /usr/bin stub offers an install dialog, so it is skipped there.
+fixed_python() {
+  local p
+  for p in /opt/homebrew/bin/python3 /usr/local/bin/python3 \
+           /Library/Developer/CommandLineTools/usr/bin/python3 /usr/bin/python3; do
+    [ "$p" = /usr/bin/python3 ] && [ "$(uname -s)" = Darwin ] && continue
+    [ -x "$p" ] && { printf '%s' "$p"; return 0; }
+  done
+  return 1
+}
+get_teamai_account() {
+  local home py
+  home=$(teamai_home)
+  [ -f "$home/config.json" ] || return 1
+  [ -n "${ANTHROPIC_BASE_URL:-}" ] || return 1
+  py=$(fixed_python) || return 1
+  "$py" -I -S -c '
+import json, os, re, subprocess, sys, urllib.parse
+home = sys.argv[1]
+try:
+    url = urllib.parse.urlsplit(sys.argv[2]); port = url.port
+except ValueError:
+    sys.exit(1)
+# The parsed host, so "http://localhost:3456@elsewhere" is not taken for this machine.
+if url.scheme not in ("http", "https") or url.hostname not in ("localhost", "127.0.0.1", "::1") or not port:
+    sys.exit(1)
+def load(name):
+    with open(os.path.join(home, name), encoding="utf-8") as f:
+        return json.load(f)
+try:
+    config = load("config.json"); proxy = config.get("proxy") or {}
+    ports = {proxy.get("claudePort"), 3456, *((proxy.get("legacyPorts") or {}).get("claude") or [])}
+    if port not in ports:
+        sys.exit(1)
+    # A live pid is not enough once TeamAI stopped: the pid may now belong to anything.
+    pid = int(load("server.json")["pid"])
+    command = subprocess.run(["/bin/ps", "-o", "command=", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=2).stdout
+    if not re.search(r"\b(teamai|cli\.js) (server|supervise)\b", command):
+        sys.exit(1)
+    used = load("state.json").get("accounts") or {}
+    last, label = max(((used.get(a.get("credentialId")) or {}).get("lastUsed") or 0, a.get("label") or "")
+                      for a in config.get("accounts") or [] if a.get("provider") == "claude")
+except Exception:
+    sys.exit(1)
+if not last:
+    sys.exit(1)
+print(label)
+' "$home" "$ANTHROPIC_BASE_URL" 2>/dev/null | tr -d '[:cntrl:]'
+}
+
+# --- teamclaude proxy active account ---
+# When this session routes through the teamclaude multi-account proxy
+# (KarpelesLab/teamclaude), the effective account rotates per-request and is
+# NOT reflected in .claude.json (which holds the static CLI /login account).
+# Read the live account from `teamclaude status`, cached ~8s so the statusline
+# stays fast. Returns non-zero when not on the proxy, so callers fall back.
+get_teamclaude_account() {
+  # only the local teamclaude proxy (loopback:3456); ignore remote hosts on that port
+  case "${ANTHROPIC_BASE_URL:-}" in
+    http://localhost:3456|http://localhost:3456/*|https://localhost:3456|https://localhost:3456/*) ;;
+    http://127.0.0.1:3456|http://127.0.0.1:3456/*|https://127.0.0.1:3456|https://127.0.0.1:3456/*) ;;
+    "http://[::1]:3456"|"http://[::1]:3456/"*|"https://[::1]:3456"|"https://[::1]:3456/"*) ;;
+    *) return 1 ;;
   esac
+  # resolve teamclaude only from fixed trusted install locations — this statusline
+  # runs automatically on every render, so never execute a `teamclaude` from $PATH
+  # or an env-provided path (both are attacker-influenceable).
+  local tcbin="" p=""
+  for p in /opt/homebrew/bin/teamclaude /usr/local/bin/teamclaude \
+           "$HOME/.bun/bin/teamclaude" "$HOME/.local/bin/teamclaude" /usr/bin/teamclaude; do
+    [ -x "$p" ] && { tcbin="$p"; break; }
+  done
+  [ -n "$tcbin" ] || return 1
+  # canonicalize (resolve symlinks) and validate the REAL target: must be a
+  # regular file we own and that is not group/other-writable
+  local real
+  real=$(readlink -f "$tcbin" 2>/dev/null || realpath "$tcbin" 2>/dev/null || printf '%s' "$tcbin")
+  tcbin="$real"
+  { [ -f "$tcbin" ] && [ ! -L "$tcbin" ] && [ -x "$tcbin" ] && [ -O "$tcbin" ]; } || return 1
+  local _m
+  _m=$(stat -f '%Lp' "$tcbin" 2>/dev/null || stat -c '%a' "$tcbin" 2>/dev/null || echo 777)
+  { [ $(( ${_m: -2:1} & 2 )) -eq 0 ] && [ $(( ${_m: -1:1} & 2 )) -eq 0 ]; } || return 1
+  # private per-user cache dir we own (avoid symlink attacks in a shared /tmp)
+  local cdir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/aiops.$(id -u 2>/dev/null || echo u)"
+  [ -L "$cdir" ] && return 1
+  mkdir -p "$cdir" 2>/dev/null || return 1
+  chmod 700 "$cdir" 2>/dev/null
+  { [ -d "$cdir" ] && [ ! -L "$cdir" ] && [ -O "$cdir" ]; } || return 1
+  local cache="$cdir/tc-account" now mtime=0 acct="" tc="" tmpf=""
+  now=$(date +%s)
+  [ -f "$cache" ] && mtime=$(stat -f %m "$cache" 2>/dev/null || stat -c %Y "$cache" 2>/dev/null || echo 0)
+  if [ $(( now - mtime )) -ge 8 ]; then
+    # always run under a timeout so a hung teamclaude never stalls the statusline;
+    # if no timeout tool exists, skip the live fetch and fall back to cache/.claude.json
+    if command -v timeout >/dev/null 2>&1; then tc=$(timeout 2 "$tcbin" status 2>/dev/null)
+    elif command -v gtimeout >/dev/null 2>&1; then tc=$(gtimeout 2 "$tcbin" status 2>/dev/null)
+    else tc=""; fi
+    # strip control chars (incl. ESC) to prevent terminal injection
+    acct=$(printf '%s' "$tc" | grep -m1 -E '^Active account:' | sed -E 's/^Active account:[[:space:]]*//' | tr -d '[:cntrl:]')
+    if [ -n "$acct" ] && tmpf=$(mktemp "$cdir/tc.XXXXXX" 2>/dev/null); then
+      printf '%s' "$acct" > "$tmpf" && mv -f "$tmpf" "$cache" 2>/dev/null && mtime=$(date +%s)
+      [ -e "$tmpf" ] && rm -f "$tmpf" 2>/dev/null
+    fi
+  fi
+  # bounded staleness: discard a cache older than 60s so a persistently failing
+  # refresh falls back to .claude.json instead of pinning a stale account
+  [ $(( $(date +%s) - mtime )) -lt 60 ] || return 1
+  acct=$(cat "$cache" 2>/dev/null | tr -d '[:cntrl:]')
+  [ -n "$acct" ] || return 1
+  printf '%s' "$acct"
 }
 
 # --- task-context helpers (session title / current work / edited repos) ---
+# minimal JSON string unescape for display, then control-char sanitize
+decode_json_str() {
+  sed -E 's/\\[nrt]/ /g; s/\\"/"/g; s/\\\\/\\/g' | sanitize_name | redact_secretish
+}
+# value of the first/last JSON string field "$1" in the blob on stdin
+json_field_first() {
+  grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" | head -n1 \
+    | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//; s/"$//' | decode_json_str
+}
+json_field_last() {
+  grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" | tail -n1 \
+    | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//; s/"$//' | decode_json_str
+}
 # mask secret-looking spans before display (statusline is screenshot/share surface):
 # known token prefixes + key/token/secret/password-style assignments
 redact_secretish() {
@@ -117,19 +251,6 @@ redact_secretish() {
     -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]{10,}/■■■/g' \
     -e 's/([Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+)[^[:space:]]+/\1■■■/g' \
     -e "s/([A-Za-z0-9_-]*([Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww]?[Oo]?[Rr]?[Dd]?|[Pp][Ww][Dd]?|[Cc][Rr][Ee][Dd][A-Za-z]*)[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:]).*/\1■■■/"
-}
-# minimal JSON string unescape for display, then control-char sanitize + redaction
-decode_json_str() {
-  sed -E 's/\\[nrt]/ /g; s/\\"/"/g; s/\\\\/\\/g' | sanitize_name | redact_secretish
-}
-# value of the first/last JSON string field "$1" in the blob on stdin
-json_field_first() {
-  grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" | head -n1 \
-    | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//; s/"$//' | decode_json_str
-}
-json_field_last() {
-  grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" | tail -n1 \
-    | sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//; s/"$//' | decode_json_str
 }
 truncate_str() {
   local s="$1" n="${2:-40}"
@@ -161,7 +282,7 @@ cost_usd=$(num_field "total_cost_usd");           [ -z "$cost_usd" ] && cost_usd
 # 1M-context models (fable/mythos, and opus/sonnet "[1m]" variants) — the
 # denominator then reads e.g. "551K/200K". Correct the window from the model id
 # and recompute the pct against it so the ctx bar agrees with the denominator.
-# No-op once the payload reports >= 1M (forward-compatible with an upstream fix).
+# No-op once the payload reports >= 1M (forward-compatible with a CC fix).
 model_id=$(printf '%s' "$input" | grep -oE '"model"[[:space:]]*:[[:space:]]*\{[^}]*\}' | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*"([^"]*)"[[:space:]]*$/\1/')
 case "$model_id" in
   *"[1m]"*|claude-fable-*|claude-mythos-*)
@@ -186,11 +307,11 @@ project_name=$(basename "$cwd" 2>/dev/null | sanitize_name)
 [ -z "$project_name" ] && project_name="?"
 
 # repository identity for the project segment — always visible:
-#   origin remote "owner/repo" shown in front of the folder name; the folder
-#   part is omitted when it equals the repo name (avoids "repo/repo" at the
-#   checkout root). Without a usable origin, fall back to the main-repo-root
-#   basename prefix (worktree/subdir only, as before). Outside git the plain
-#   folder name remains.
+#   origin remote "owner/repo" (e.g. acme/web-app) shown
+#   in front of the folder name; the folder part is omitted when it equals the
+#   repo name (avoids "repo/repo" at the checkout root). Without a usable
+#   origin, fall back to the main-repo-root basename prefix (worktree/subdir
+#   only, as before). Outside git the plain folder name remains.
 repo_common=""
 [ -n "$cwd" ] && repo_common=$(git -C "$cwd" rev-parse --git-common-dir 2>/dev/null)
 if [ -n "$repo_common" ]; then
@@ -220,9 +341,12 @@ if [ -n "$repo_common" ]; then
   fi
 fi
 
-# --- task context: session title / current work / repos edited this session ---
-transcript_path=$(str_field "transcript_path")
+# session id — locates this session's task/todo stores; fall back to transcript filename
 session_id=$(str_field "session_id")
+transcript_path=$(str_field "transcript_path")
+if [ -z "$session_id" ] && [ -n "$transcript_path" ]; then
+  session_id=$(basename "$transcript_path" .jsonl 2>/dev/null)
+fi
 
 # trust boundary: stdin is harness-produced, but never trust paths from it.
 # session_id must be a full UUID (it feeds glob paths — a short prefix would
@@ -246,7 +370,72 @@ if [ -n "$session_id" ] && [ -n "$transcript_path" ] \
 fi
 [ -n "$tp_ok" ] || transcript_path=""
 
-task_title=$(str_field "session_name" | decode_json_str)
+# peer name: what SendMessage/ListAgents call this session (e.g. "my-laptop-ea").
+# Claude Code keeps one registry file per live process at <config>/sessions/<pid>.json
+# with the current sessionId (it follows /clear) and that name, and runs this
+# script as its direct child: read $PPID.json, walking up at most 4 ancestors,
+# and accept it only when its sessionId is this session's. One file, no scan.
+# The file is opened once (no symlink follow, non-blocking) and judged by fstat
+# on that descriptor, then read up to 64K: a FIFO, device or link is skipped.
+peer_name=""
+peer_source=""
+if [ -n "$session_id" ] && reg_py=$(fixed_python); then
+  reg_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+  [ -d "$reg_dir" ] || reg_dir="$HOME/.claude/sessions"
+  peer_line=$("$reg_py" -I -S -c '
+import json, os, stat, subprocess, sys
+reg_dir, sid, pid, cap = sys.argv[1], sys.argv[2], sys.argv[3], 65536
+flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+def entry(pid):
+    try:
+        fd = os.open(os.path.join(reg_dir, pid + ".json"), flags)
+    except OSError:
+        return None
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > cap:
+            return None
+        data = os.read(fd, cap + 1)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    try:
+        reg = json.loads(data[:cap].decode("utf-8"))
+    except (ValueError, RecursionError):
+        return None
+    return reg if isinstance(reg, dict) and reg.get("sessionId") == sid else None
+reg = None
+for _ in range(4):
+    if not pid.isdigit() or int(pid) <= 1:
+        break
+    reg = entry(pid)
+    if reg is not None:
+        break
+    try:
+        pid = subprocess.run(["/bin/ps", "-o", "ppid=", "-p", pid],
+                             capture_output=True, text=True, timeout=2).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        break
+if reg is None:
+    sys.exit(1)
+name, source = reg.get("name"), reg.get("nameSource")
+if not isinstance(name, str) or not name:
+    sys.exit(1)
+source = source if isinstance(source, str) and source.isalpha() else ""
+# whitespace becomes a space (not dropped) so redact_secretish still sees "Bearer x"
+name = "".join(c if c.isprintable() else " " if c.isspace() else "" for c in name)
+print(source + "\t" + name)
+' "$reg_dir" "$session_id" "$PPID" 2>/dev/null)
+  if [ -n "$peer_line" ]; then
+    tab=$'\t'
+    peer_source="${peer_line%%"$tab"*}"
+    peer_name=$(printf '%s' "${peer_line#*"$tab"}" | sanitize_name | redact_secretish)
+  fi
+fi
+
+# --- task context: session title / current work / repos edited this session ---
+task_title=$(printf '%s' "$input" | json_field_first "session_name")
 task_now=""
 task_repos=""
 
@@ -259,6 +448,7 @@ if [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
   [ -z "$task_title" ] && task_title=$(printf '%s' "$t_tail" | json_field_last "aiTitle")
 
   # current work: in-progress task (tasks store) → todo store — curated metadata only
+  # (same cfg_base convention as the subagent/task-count section below)
   if [ -n "$session_id" ]; then
     tc_base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
     [ -d "$tc_base/todos" ] || [ -d "$tc_base/tasks" ] || tc_base="$HOME/.claude"
@@ -326,7 +516,19 @@ EOF_DIRS
   fi
 fi
 
-account_email=$(get_account)
+# effective account: a rotating relay (TeamAI, else legacy teamclaude) wins over
+# the static CLI login in .claude.json when this session routes through it.
+# Where TeamAI is set up, teamclaude is retired: its leftover CLI is never run.
+# Deciding by endpoint instead would not work: both relays use port 3456, so every
+# moment TeamAI is down would run that CLI again on each render.
+ACCOUNT_VIA_PROXY=""
+if account_email=$(get_teamai_account) && [ -n "$account_email" ]; then
+  ACCOUNT_VIA_PROXY="tai"
+elif [ ! -f "$(teamai_home)/config.json" ] && account_email=$(get_teamclaude_account); then
+  ACCOUNT_VIA_PROXY="tc"
+else
+  account_email=$(get_account)
+fi
 
 # rate_limits
 five_pct=$(printf '%s' "$input" | grep -oE '"five_hour"[^}]*' | grep -oE '"used_percentage"[[:space:]]*:[[:space:]]*[0-9.]+' | grep -oE '[0-9.]+$')
@@ -450,6 +652,41 @@ seven_remain=$((100 - seven_pct))
 # cost formatting
 cost_fmt=$(printf '%.2f' "$cost_usd")
 
+# --- subagent + task counts (session-scoped, from filesystem stores) ---
+task_done=0
+task_total=0
+sub_count=0
+if [ -n "$session_id" ]; then
+  # base dir holding todos/ and tasks/ (default ~/.claude)
+  cfg_base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  [ -d "$cfg_base/todos" ] || [ -d "$cfg_base/tasks" ] || cfg_base="$HOME/.claude"
+
+  # tasks: prefer the Task system (one json file per task), else main-agent TodoWrite
+  task_dir="$cfg_base/tasks/$session_id"
+  if [ -d "$task_dir" ]; then
+    for tf in "$task_dir"/*.json; do
+      [ -f "$tf" ] || continue
+      task_total=$((task_total + 1))
+      grep -q '"status"[[:space:]]*:[[:space:]]*"completed"' "$tf" 2>/dev/null && task_done=$((task_done + 1))
+    done
+  fi
+  if [ "$task_total" -eq 0 ]; then
+    todo_main="$cfg_base/todos/${session_id}-agent-${session_id}.json"
+    if [ -f "$todo_main" ]; then
+      task_total=$(grep -oE '"status"[[:space:]]*:[[:space:]]*"[a-z_]+"' "$todo_main" 2>/dev/null | wc -l | tr -d ' ')
+      task_done=$(grep -oE '"status"[[:space:]]*:[[:space:]]*"completed"' "$todo_main" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+  fi
+
+  # subagents: this session's subagent TodoWrite files (agent id != session id)
+  for af in "$cfg_base"/todos/"${session_id}"-agent-*.json; do
+    [ -f "$af" ] || continue
+    ab=$(basename "$af" .json)
+    ag=${ab##*-agent-}
+    [ "$ag" != "$session_id" ] && sub_count=$((sub_count + 1))
+  done
+fi
+
 # --- compose LINE 1: model + in/out tokens + total/ctx + cost ---
 in_display=$(format_tokens "$input_tokens")
 out_display=$(format_tokens "$output_tokens")
@@ -476,10 +713,23 @@ account_seg=""
 if [ -n "$account_email" ]; then
   acct_disp="$account_email"
   [ "$MASK_ACCOUNT" = "1" ] && acct_disp=$(mask_email "$account_email")
-  account_seg="${SEP}👤 ${WHITE}${acct_disp}${RST}"
+  tc_marker=""
+  [ -n "$ACCOUNT_VIA_PROXY" ] && tc_marker=" ${DIM}⇄${ACCOUNT_VIA_PROXY}${RST}"
+  account_seg="${SEP}👤 ${WHITE}${acct_disp}${RST}${tc_marker}"
 fi
 
-# --- compose LINE 2: project + git + session time + changes + account ---
+# task progress segment (only if this session has any task/todo)
+task_seg=""
+if [ "$task_total" -gt 0 ]; then
+  if [ "$task_done" -ge "$task_total" ]; then task_col="$GREEN"; else task_col="$YELLOW"; fi
+  task_seg="${SEP}${task_col}✓${task_done}/${task_total}${RST}"
+fi
+
+# subagent count segment (only if any subagent ran this session)
+sub_seg=""
+[ "$sub_count" -gt 0 ] && sub_seg="${SEP}${CYAN}🤖${sub_count}${RST}"
+
+# --- compose LINE 2: project + git + session time + changes + tasks + subagents + account ---
 L2=""
 L2="${L2}${BLUE}${project_name}${RST}"
 L2="${L2}${SEP}"
@@ -488,12 +738,31 @@ L2="${L2}${SEP}"
 L2="${L2}${MAGENTA}⏱ ${dur_display}${RST}"
 L2="${L2}${SEP}"
 L2="${L2}${GREEN}+${lines_added}${RST} ${RED}-${lines_removed}${RST}"
+L2="${L2}${task_seg}${sub_seg}"
 L2="${L2}${account_seg}"
 
-# --- compose task line: 📋 session title │ ▶ current work │ ✎ edited repos ---
+# peer-name segment; for a derived name the tail that tells sibling sessions
+# apart ("ea" in "my-laptop-ea") is bold
+peer_seg=""
+if [ -n "$peer_name" ]; then
+  # split before truncating so a long folder prefix never cuts the tail off
+  if [ "$peer_source" = "derived" ] && [ "${peer_name%-*}" != "$peer_name" ]; then
+    peer_seg="🏷 ${DIM}$(truncate_str "${peer_name%-*}" 28)-${RST}${BOLD}${YELLOW}$(truncate_str "${peer_name##*-}" 8)${RST}"
+  else
+    peer_seg="🏷 ${BOLD}${YELLOW}$(truncate_str "$peer_name" 32)${RST}"
+  fi
+fi
+# a /rename'd session carries the same text as name and title: show it once
+[ -n "$peer_name" ] && [ "$task_title" = "$peer_name" ] && task_title=""
+
+# --- compose task line: 🏷 peer name │ 📋 session title │ ▶ current work │ ✎ edited repos ---
 LT=""
-if [ -n "$task_title" ] || [ -n "$task_now" ] || [ -n "$task_repos" ]; then
-  [ -n "$task_title" ] && LT="📋 ${WHITE}$(truncate_str "$task_title" 40)${RST}"
+if [ -n "$peer_seg" ] || [ -n "$task_title" ] || [ -n "$task_now" ] || [ -n "$task_repos" ]; then
+  LT="$peer_seg"
+  if [ -n "$task_title" ]; then
+    [ -n "$LT" ] && LT="${LT}${SEP}"
+    LT="${LT}📋 ${WHITE}$(truncate_str "$task_title" 40)${RST}"
+  fi
   if [ -n "$task_now" ]; then
     [ -n "$LT" ] && LT="${LT}${SEP}"
     LT="${LT}${GREEN}▶${RST} ${WHITE}$(truncate_str "$task_now" 40)${RST}"
@@ -538,6 +807,7 @@ L3="${L3}📦 ${GREEN}${cache_pct}%${RST}"
 # --- output ---
 if [ "$MODE" = "lite" ]; then
   LITE=""
+  [ -n "$peer_seg" ] && LITE="${peer_seg}${SEP}"
   LITE="${LITE}${BLUE}${project_name}${RST}"
   LITE="${LITE}${SEP}"
   LITE="${LITE}${YELLOW}${git_branch}${RST}"

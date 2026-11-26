@@ -26,13 +26,17 @@
 
 ```text
 Opus 4.6 │ In:180K Out:54K │ 234K/200K │ $1.23
-my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12 │ 👤 you@example.com
+my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12 │ ✓3/5 │ 🤖2 │ 👤 you@example.com
+🏷 my-laptop-ea │ 📋 결제 화면 수정 │ ▶ 테스트 작성 중 │ ✎ web-app
 ctx █████░░░ 58% │ 5h █████░░░ 72%(3h42m) │ 7d █████░░░ 65% │ cache 89%
 ```
 
 - `1줄`: 모델, 입력/출력 토큰 수, 총 토큰/컨텍스트 크기, 세션 비용
-- `2줄`: 저장소 식별자(origin `owner/repo` — git 워크트리·하위 폴더에서는 `owner/repo/폴더명`, git 밖에서는 폴더명만), git 브랜치 + 커밋 해시, 세션 시간, 변경 라인 수, 로그인 계정(👤 이메일)
-- `3줄`: 사용량 바(`ctx`, `5h`, `7d`), 5시간 리셋까지 남은 시간, 프롬프트 캐시 적중률
+- `2줄`: 저장소 식별자(origin `owner/repo`, git 워크트리·하위 폴더에서는 `owner/repo/폴더명`, git 밖에서는 폴더명만), git 브랜치 + 커밋 해시, 세션 시간, 변경 라인 수, 할 일 진행(✓완료/전체), 서브에이전트 수(🤖), 로그인 계정(👤 이메일)
+- `작업 줄`: 세션 이름(🏷), 세션 제목(📋), 지금 하는 일(▶), 이번 세션에 고친 저장소(✎). 보여 줄 값이 하나도 없으면 이 줄은 나오지 않아 3줄이 됩니다.
+- `마지막 줄`: 사용량 바(`ctx`, `5h`, `7d`), 5시간 리셋까지 남은 시간, 프롬프트 캐시 적중률
+
+할 일 진행과 서브에이전트 수는 이번 세션에 할 일이나 서브에이전트가 있을 때만 나옵니다.
 
 `--left` 플래그 사용 시 3줄이 남은 용량 표시로 전환됩니다:
 
@@ -171,6 +175,12 @@ JSON 입력에서 사용 가능한 필드:
 - `workspace.current_dir`, `cwd`
 
 > **로그인 계정(👤)** 은 stdin JSON에 포함되지 않습니다. 스크립트가 `~/.claude.json`(`CLAUDE_CONFIG_DIR` 설정 시 해당 경로)의 `oauthAccount.emailAddress`를 직접 읽어 2줄 끝에 표시합니다. `--mask-account` 플래그로 마스킹(`ma***@gmail.com`)할 수 있고, 계정 정보가 없으면 생략됩니다.
+>
+> **여러 계정을 돌려 쓰는 중계 서버**를 거치면 실제로 쓰인 계정이 `~/.claude.json`과 다를 수 있습니다. 세션의 `ANTHROPIC_BASE_URL`이 이 컴퓨터의 중계 포트를 가리키면 그 중계가 마지막에 쓴 계정을 보여 주고, 계정 뒤에 `⇄tai`(TeamAI) 또는 `⇄tc`(teamclaude)를 붙입니다. TeamAI는 자기 상태 파일만 읽고, teamclaude는 고정된 설치 위치의 실행 파일만 2초 제한으로 실행합니다. Windows 판은 teamclaude만 지원합니다.
+>
+> **할 일 진행(✓)·서브에이전트 수(🤖)** 는 `~/.claude/tasks/<세션 ID>/`와 `~/.claude/todos/`의 파일 수로 셉니다.
+>
+> **작업 줄** 은 세션 기록(`transcript_path`)과 Claude Code가 세션마다 남기는 `~/.claude/sessions/<pid>.json`을 읽습니다. 세션 기록은 `~/.claude/projects/` 아래에 있는 그 세션 자신의 파일만 읽습니다. 제목과 지금 하는 일은 정리된 요약(세션 이름, 자동 제목, 할 일 문구)만 쓰고, 프롬프트 원문은 쓰지 않습니다. 토큰처럼 보이는 값은 `■■■`로 가립니다. 작업 줄은 현재 bash 판에만 있습니다.
 
 ### 문제 해결
 
@@ -360,6 +370,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-unins
 ## 요구사항
 
 - **Claude Code**: `statusLine`을 지원하는 Claude Code CLI + bash(`.sh` 설치) 또는 PowerShell(Windows 설치)
+  - 세션 이름(🏷)과 TeamAI 계정 표시는 고정 위치의 python3(`/opt/homebrew/bin`, `/usr/local/bin`, CommandLineTools, macOS 외 `/usr/bin`)가 있을 때만 나옵니다. 없으면 그 항목만 빠집니다.
 - **Codex CLI**: `/statusline`을 지원하는 Codex CLI v0.1+
 - **Model/Profile Switcher**: Node.js 18+
 - **Terminal / tmux**: zsh 또는 bash, tmux 3.x 권장

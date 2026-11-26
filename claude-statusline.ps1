@@ -218,6 +218,78 @@ function Mask-Email {
   return $Email
 }
 
+function Get-TeamclaudeAccount {
+  # When routed through the teamclaude multi-account proxy (KarpelesLab/teamclaude),
+  # the effective account rotates per-request and is NOT reflected in .claude.json
+  # (which only updates on occasional profile fetches). Read the live account from
+  # `teamclaude status`, cached ~8s so the statusline stays fast. Returns '' when
+  # not on the proxy so callers fall back to Get-Account.
+  $base = $env:ANTHROPIC_BASE_URL
+  # only the local teamclaude proxy (loopback:3456), anchored to the URL authority
+  # so a loopback string in a path/query can't spoof detection
+  if (-not ($base -match '(?i)^https?://(localhost|127\.0\.0\.1|\[::1\]):3456($|[/?#])')) { return '' }
+  # resolve teamclaude only from fixed trusted install locations — the statusline
+  # runs automatically, so never execute a `teamclaude` from $PATH or an
+  # env-provided path (both are attacker-influenceable).
+  # derive install dirs from OS known-folder APIs (not spoofable $env vars)
+  $appdata = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+  $userprof = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+  $cands = @()
+  if ($appdata) { $cands += (Join-Path $appdata 'npm\teamclaude.cmd'); $cands += (Join-Path $appdata 'npm\teamclaude.ps1') }
+  if ($userprof) { $cands += (Join-Path $userprof '.bun\bin\teamclaude.exe'); $cands += (Join-Path $userprof '.bun\bin\teamclaude') }
+  $tcbin = ''
+  $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  foreach ($c in $cands) {
+    if (Test-Path $c) {
+      try {
+        $owner = (Get-Acl $c).Owner
+        # only execute if owned by us or a trusted system principal
+        if ($owner -eq $me -or $owner -match '\\(Administrators|SYSTEM|TrustedInstaller)$') { $tcbin = $c; break }
+      } catch { }
+    }
+  }
+  if (-not $tcbin) { return '' }
+
+  # per-user private subdir under the (already per-user) Windows temp dir
+  $cdir = Join-Path ([System.IO.Path]::GetTempPath()) 'aiops'
+  try { if (-not (Test-Path $cdir)) { New-Item -ItemType Directory -Path $cdir -Force | Out-Null } } catch { return '' }
+  $cache = Join-Path $cdir 'tc-account'
+  $fresh = $false
+  if (Test-Path $cache) {
+    if (((Get-Date) - (Get-Item $cache).LastWriteTime).TotalSeconds -lt 8) { $fresh = $true }
+  }
+  if (-not $fresh) {
+    try {
+      # run with a hard timeout so a hung teamclaude never stalls the statusline
+      $job = Start-Job -ScriptBlock { param($bin) & $bin status 2>$null | Out-String } -ArgumentList $tcbin
+      $out = ''
+      if (Wait-Job $job -Timeout 2) { $out = (Receive-Job $job) }
+      Remove-Job $job -Force -ErrorAction SilentlyContinue
+      if ($out) {
+        $m = [regex]::Match($out, '(?m)^Active account:\s*(.+?)\s*$')
+        if ($m.Success) {
+          # strip control chars to prevent terminal injection
+          $acct = ($m.Groups[1].Value -replace '[\x00-\x1F\x7F]', '')
+          if ($acct) {
+            $tmp = Join-Path $cdir ('tc.' + [System.IO.Path]::GetRandomFileName())
+            Set-Content -Path $tmp -Value $acct -NoNewline -Encoding UTF8
+            Move-Item -Path $tmp -Destination $cache -Force
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  # bounded staleness: discard a cache older than 60s so a persistently failing
+  # refresh falls back to .claude.json instead of pinning a stale account
+  if (Test-Path $cache) {
+    if (((Get-Date) - (Get-Item $cache).LastWriteTime).TotalSeconds -lt 60) {
+      return (((Get-Content -Path $cache -Raw -ErrorAction SilentlyContinue) -replace '[\x00-\x1F\x7F]', '').Trim())
+    }
+  }
+  return ''
+}
+
 $modelName = Get-StringValue $data.model.display_name 'Claude'
 $modelShort = if ($modelName -like 'Claude *') { $modelName.Substring(7) } else { $modelName }
 
@@ -307,7 +379,22 @@ if (-not [string]::IsNullOrWhiteSpace($gitCommonDir)) {
   }
 }
 
-$accountEmail = Get-Account
+# session id — locates this session's task/todo stores; fall back to transcript filename
+$sessionId = Get-StringValue $data.session_id ''
+if (-not $sessionId) {
+  $tp = Get-StringValue $data.transcript_path ''
+  if ($tp) { $sessionId = [System.IO.Path]::GetFileNameWithoutExtension($tp) }
+}
+
+# effective account: teamclaude proxy (rotating) wins over the static CLI
+# login in .claude.json when this session routes through the proxy.
+$accountViaProxy = $false
+$accountEmail = Get-TeamclaudeAccount
+if ($accountEmail) {
+  $accountViaProxy = $true
+} else {
+  $accountEmail = Get-Account
+}
 
 $fivePct = Clamp-Percent (Get-IntValue $rateLimits.five_hour.used_percentage 0)
 $fiveReset = Get-IntValue $rateLimits.five_hour.resets_at 0
@@ -370,15 +457,71 @@ $line1 = @(
 
 $accountDisplay = if ($maskAccount) { Mask-Email $accountEmail } else { $accountEmail }
 
+# --- subagent + task counts (session-scoped, from filesystem stores) ---
+$taskDone = 0
+$taskTotal = 0
+$subCount = 0
+if ($sessionId) {
+  $cfgBase = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
+  if (-not ((Test-Path (Join-Path $cfgBase 'todos')) -or (Test-Path (Join-Path $cfgBase 'tasks')))) {
+    $cfgBase = Join-Path $HOME '.claude'
+  }
+  # tasks: prefer the Task system (one json file per task), else main-agent TodoWrite
+  $taskDir = Join-Path (Join-Path $cfgBase 'tasks') $sessionId
+  if (Test-Path $taskDir) {
+    $taskFiles = @(Get-ChildItem -Path $taskDir -Filter '*.json' -File -ErrorAction SilentlyContinue)
+    $taskTotal = $taskFiles.Count
+    foreach ($tf in $taskFiles) {
+      if (Select-String -Path $tf.FullName -Pattern '"status"\s*:\s*"completed"' -Quiet -ErrorAction SilentlyContinue) {
+        $taskDone++
+      }
+    }
+  }
+  if ($taskTotal -eq 0) {
+    $todoMain = Join-Path (Join-Path $cfgBase 'todos') ('{0}-agent-{0}.json' -f $sessionId)
+    if (Test-Path $todoMain) {
+      $raw = Get-Content -Path $todoMain -Raw -ErrorAction SilentlyContinue
+      if ($raw) {
+        $taskTotal = ([regex]::Matches($raw, '"status"\s*:\s*"[a-z_]+"')).Count
+        $taskDone = ([regex]::Matches($raw, '"status"\s*:\s*"completed"')).Count
+      }
+    }
+  }
+  # subagents: this session's subagent TodoWrite files (agent id != session id)
+  $todosDir = Join-Path $cfgBase 'todos'
+  if (Test-Path $todosDir) {
+    foreach ($sf in @(Get-ChildItem -Path $todosDir -Filter ('{0}-agent-*.json' -f $sessionId) -File -ErrorAction SilentlyContinue)) {
+      $ag = ([System.IO.Path]::GetFileNameWithoutExtension($sf.Name)) -replace '.*-agent-', ''
+      if ($ag -ne $sessionId) { $subCount++ }
+    }
+  }
+}
+
+# task progress segment (only if this session has any task/todo)
+$taskSeg = ''
+if ($taskTotal -gt 0) {
+  $taskCol = if ($taskDone -ge $taskTotal) { $GREEN } else { $YELLOW }
+  $taskSeg = "${taskCol}$([char]0x2713)${taskDone}/${taskTotal}${RST}"
+}
+# subagent count segment (only if any subagent ran this session)
+$subSeg = ''
+if ($subCount -gt 0) {
+  $robot = [char]::ConvertFromUtf32(0x1F916)
+  $subSeg = "${CYAN}${robot}${subCount}${RST}"
+}
+
 $line2Parts = @(
   "${BLUE}${projectName}${RST}"
   "${YELLOW}${gitBranch}${RST} ${DIM}${gitHash}${RST}"
   "${MAGENTA}$([char]0x23F1) ${durDisplay}${RST}"
   "${GREEN}+${linesAdded}${RST} ${RED}-${linesRemoved}${RST}"
 )
+if ($taskSeg) { $line2Parts += $taskSeg }
+if ($subSeg) { $line2Parts += $subSeg }
 if ($accountEmail) {
   $person = [char]::ConvertFromUtf32(0x1F464)
-  $line2Parts += "${person} ${WHITE}${accountDisplay}${RST}"
+  $tcMarker = if ($accountViaProxy) { " ${DIM}$([char]0x21C4)tc${RST}" } else { '' }
+  $line2Parts += "${person} ${WHITE}${accountDisplay}${RST}${tcMarker}"
 }
 $line2 = $line2Parts -join $SEP
 
