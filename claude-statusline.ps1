@@ -218,78 +218,6 @@ function Mask-Email {
   return $Email
 }
 
-function Get-TeamclaudeAccount {
-  # When routed through the teamclaude multi-account proxy (KarpelesLab/teamclaude),
-  # the effective account rotates per-request and is NOT reflected in .claude.json
-  # (which only updates on occasional profile fetches). Read the live account from
-  # `teamclaude status`, cached ~8s so the statusline stays fast. Returns '' when
-  # not on the proxy so callers fall back to Get-Account.
-  $base = $env:ANTHROPIC_BASE_URL
-  # only the local teamclaude proxy (loopback:3456), anchored to the URL authority
-  # so a loopback string in a path/query can't spoof detection
-  if (-not ($base -match '(?i)^https?://(localhost|127\.0\.0\.1|\[::1\]):3456($|[/?#])')) { return '' }
-  # resolve teamclaude only from fixed trusted install locations — the statusline
-  # runs automatically, so never execute a `teamclaude` from $PATH or an
-  # env-provided path (both are attacker-influenceable).
-  # derive install dirs from OS known-folder APIs (not spoofable $env vars)
-  $appdata = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
-  $userprof = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-  $cands = @()
-  if ($appdata) { $cands += (Join-Path $appdata 'npm\teamclaude.cmd'); $cands += (Join-Path $appdata 'npm\teamclaude.ps1') }
-  if ($userprof) { $cands += (Join-Path $userprof '.bun\bin\teamclaude.exe'); $cands += (Join-Path $userprof '.bun\bin\teamclaude') }
-  $tcbin = ''
-  $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-  foreach ($c in $cands) {
-    if (Test-Path $c) {
-      try {
-        $owner = (Get-Acl $c).Owner
-        # only execute if owned by us or a trusted system principal
-        if ($owner -eq $me -or $owner -match '\\(Administrators|SYSTEM|TrustedInstaller)$') { $tcbin = $c; break }
-      } catch { }
-    }
-  }
-  if (-not $tcbin) { return '' }
-
-  # per-user private subdir under the (already per-user) Windows temp dir
-  $cdir = Join-Path ([System.IO.Path]::GetTempPath()) 'aiops'
-  try { if (-not (Test-Path $cdir)) { New-Item -ItemType Directory -Path $cdir -Force | Out-Null } } catch { return '' }
-  $cache = Join-Path $cdir 'tc-account'
-  $fresh = $false
-  if (Test-Path $cache) {
-    if (((Get-Date) - (Get-Item $cache).LastWriteTime).TotalSeconds -lt 8) { $fresh = $true }
-  }
-  if (-not $fresh) {
-    try {
-      # run with a hard timeout so a hung teamclaude never stalls the statusline
-      $job = Start-Job -ScriptBlock { param($bin) & $bin status 2>$null | Out-String } -ArgumentList $tcbin
-      $out = ''
-      if (Wait-Job $job -Timeout 2) { $out = (Receive-Job $job) }
-      Remove-Job $job -Force -ErrorAction SilentlyContinue
-      if ($out) {
-        $m = [regex]::Match($out, '(?m)^Active account:\s*(.+?)\s*$')
-        if ($m.Success) {
-          # strip control chars to prevent terminal injection
-          $acct = ($m.Groups[1].Value -replace '[\x00-\x1F\x7F]', '')
-          if ($acct) {
-            $tmp = Join-Path $cdir ('tc.' + [System.IO.Path]::GetRandomFileName())
-            Set-Content -Path $tmp -Value $acct -NoNewline -Encoding UTF8
-            Move-Item -Path $tmp -Destination $cache -Force
-          }
-        }
-      }
-    } catch {
-    }
-  }
-  # bounded staleness: discard a cache older than 60s so a persistently failing
-  # refresh falls back to .claude.json instead of pinning a stale account
-  if (Test-Path $cache) {
-    if (((Get-Date) - (Get-Item $cache).LastWriteTime).TotalSeconds -lt 60) {
-      return (((Get-Content -Path $cache -Raw -ErrorAction SilentlyContinue) -replace '[\x00-\x1F\x7F]', '').Trim())
-    }
-  }
-  return ''
-}
-
 $modelName = Get-StringValue $data.model.display_name 'Claude'
 $modelShort = if ($modelName -like 'Claude *') { $modelName.Substring(7) } else { $modelName }
 
@@ -390,15 +318,11 @@ if (-not $sessionId) {
 # other sessions' files)
 if ($sessionId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { $sessionId = '' }
 
-# effective account: teamclaude proxy (rotating) wins over the static CLI
-# login in .claude.json when this session routes through the proxy.
-$accountViaProxy = $false
-$accountEmail = Get-TeamclaudeAccount
-if ($accountEmail) {
-  $accountViaProxy = $true
-} else {
-  $accountEmail = Get-Account
-}
+# account: the static CLI login in .claude.json. Relays whose live account is
+# only available by running their CLI (e.g. teamclaude) are not queried: a
+# render-time exec of an npm .cmd shim would run whatever node.exe it resolves
+# from PATH or the current directory.
+$accountEmail = Get-Account
 
 $fivePct = Clamp-Percent (Get-IntValue $rateLimits.five_hour.used_percentage 0)
 $fiveReset = Get-IntValue $rateLimits.five_hour.resets_at 0
@@ -524,8 +448,7 @@ if ($taskSeg) { $line2Parts += $taskSeg }
 if ($subSeg) { $line2Parts += $subSeg }
 if ($accountEmail) {
   $person = [char]::ConvertFromUtf32(0x1F464)
-  $tcMarker = if ($accountViaProxy) { " ${DIM}$([char]0x21C4)tc${RST}" } else { '' }
-  $line2Parts += "${person} ${WHITE}${accountDisplay}${RST}${tcMarker}"
+  $line2Parts += "${person} ${WHITE}${accountDisplay}${RST}"
 }
 $line2 = $line2Parts -join $SEP
 

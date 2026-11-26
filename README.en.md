@@ -180,7 +180,7 @@ Available fields in the JSON input:
 
 > **Logged-in account (👤)** is not part of the stdin JSON. The script reads `oauthAccount.emailAddress` directly from `~/.claude.json` (or `CLAUDE_CONFIG_DIR` if set) and appends it to Line 2. Use `--mask-account` (`-maskAccount` in PowerShell) to mask it (`ma***@gmail.com`); it is omitted when no account is found.
 >
-> **Through a multi-account relay** the account actually used can differ from `~/.claude.json`. When the session's `ANTHROPIC_BASE_URL` points at a relay port on this machine, the statusline shows the account that relay used last and appends `⇄tai` (TeamAI) or `⇄tc` (teamclaude). TeamAI is read from its state files only; teamclaude runs only from fixed install locations with a 2s timeout and is killed 1s later if it still has not exited. The Windows script supports teamclaude only.
+> **Through the TeamAI relay** the account actually used can differ from `~/.claude.json`. When the session's `ANTHROPIC_BASE_URL` points at a TeamAI port on this machine and the TeamAI server is alive, the statusline shows the account TeamAI used last and appends `⇄tai`. Only TeamAI's state files are read; no TeamAI executable runs. Relays whose account is only available by running their CLI (e.g. teamclaude) are not queried, because a render-time exec would trust whatever interpreter that CLI resolves from PATH or the current directory. This is bash-only.
 >
 > **Task progress (✓) and subagent count (🤖)** are counted from files under `~/.claude/tasks/<session id>/` and `~/.claude/todos/`, so 🤖 counts only subagents that left a todo (TodoWrite) file; a subagent that finished without one may be missing.
 >

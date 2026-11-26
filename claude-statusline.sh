@@ -161,68 +161,6 @@ print(label)
 ' "$home" "$ANTHROPIC_BASE_URL" 2>/dev/null | tr -d '[:cntrl:]'
 }
 
-# --- teamclaude proxy active account ---
-# When this session routes through the teamclaude multi-account proxy
-# (KarpelesLab/teamclaude), the effective account rotates per-request and is
-# NOT reflected in .claude.json (which holds the static CLI /login account).
-# Read the live account from `teamclaude status`, cached ~8s so the statusline
-# stays fast. Returns non-zero when not on the proxy, so callers fall back.
-get_teamclaude_account() {
-  # only the local teamclaude proxy (loopback:3456); ignore remote hosts on that port
-  case "${ANTHROPIC_BASE_URL:-}" in
-    http://localhost:3456|http://localhost:3456/*|https://localhost:3456|https://localhost:3456/*) ;;
-    http://127.0.0.1:3456|http://127.0.0.1:3456/*|https://127.0.0.1:3456|https://127.0.0.1:3456/*) ;;
-    "http://[::1]:3456"|"http://[::1]:3456/"*|"https://[::1]:3456"|"https://[::1]:3456/"*) ;;
-    *) return 1 ;;
-  esac
-  # resolve teamclaude only from fixed trusted install locations — this statusline
-  # runs automatically on every render, so never execute a `teamclaude` from $PATH
-  # or an env-provided path (both are attacker-influenceable).
-  local tcbin="" p=""
-  for p in /opt/homebrew/bin/teamclaude /usr/local/bin/teamclaude \
-           "$HOME/.bun/bin/teamclaude" "$HOME/.local/bin/teamclaude" /usr/bin/teamclaude; do
-    [ -x "$p" ] && { tcbin="$p"; break; }
-  done
-  [ -n "$tcbin" ] || return 1
-  # canonicalize (resolve symlinks) and validate the REAL target: must be a
-  # regular file we own and that is not group/other-writable
-  local real
-  real=$(readlink -f "$tcbin" 2>/dev/null || realpath "$tcbin" 2>/dev/null || printf '%s' "$tcbin")
-  tcbin="$real"
-  { [ -f "$tcbin" ] && [ ! -L "$tcbin" ] && [ -x "$tcbin" ] && [ -O "$tcbin" ]; } || return 1
-  local _m
-  _m=$(stat -f '%Lp' "$tcbin" 2>/dev/null || stat -c '%a' "$tcbin" 2>/dev/null || echo 777)
-  { [ $(( ${_m: -2:1} & 2 )) -eq 0 ] && [ $(( ${_m: -1:1} & 2 )) -eq 0 ]; } || return 1
-  # private per-user cache dir we own (avoid symlink attacks in a shared /tmp)
-  local cdir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/aiops.$(id -u 2>/dev/null || echo u)"
-  [ -L "$cdir" ] && return 1
-  mkdir -p "$cdir" 2>/dev/null || return 1
-  chmod 700 "$cdir" 2>/dev/null
-  { [ -d "$cdir" ] && [ ! -L "$cdir" ] && [ -O "$cdir" ]; } || return 1
-  local cache="$cdir/tc-account" now mtime=0 acct="" tc="" tmpf=""
-  now=$(date +%s)
-  [ -f "$cache" ] && mtime=$(stat -f %m "$cache" 2>/dev/null || stat -c %Y "$cache" 2>/dev/null || echo 0)
-  if [ $(( now - mtime )) -ge 8 ]; then
-    # always run under a timeout so a hung teamclaude never stalls the statusline;
-    # if no timeout tool exists, skip the live fetch and fall back to cache/.claude.json
-    if command -v timeout >/dev/null 2>&1; then tc=$(timeout -k 1 2 "$tcbin" status 2>/dev/null)
-    elif command -v gtimeout >/dev/null 2>&1; then tc=$(gtimeout -k 1 2 "$tcbin" status 2>/dev/null)
-    else tc=""; fi
-    # strip control chars (incl. ESC) to prevent terminal injection
-    acct=$(printf '%s' "$tc" | grep -m1 -E '^Active account:' | sed -E 's/^Active account:[[:space:]]*//' | tr -d '[:cntrl:]')
-    if [ -n "$acct" ] && tmpf=$(mktemp "$cdir/tc.XXXXXX" 2>/dev/null); then
-      printf '%s' "$acct" > "$tmpf" && mv -f "$tmpf" "$cache" 2>/dev/null && mtime=$(date +%s)
-      [ -e "$tmpf" ] && rm -f "$tmpf" 2>/dev/null
-    fi
-  fi
-  # bounded staleness: discard a cache older than 60s so a persistently failing
-  # refresh falls back to .claude.json instead of pinning a stale account
-  [ $(( $(date +%s) - mtime )) -lt 60 ] || return 1
-  acct=$(cat "$cache" 2>/dev/null | tr -d '[:cntrl:]')
-  [ -n "$acct" ] || return 1
-  printf '%s' "$acct"
-}
-
 # --- task-context helpers (session title / current work / edited repos) ---
 # minimal JSON string unescape for display, then control-char sanitize
 decode_json_str() {
@@ -516,16 +454,14 @@ EOF_DIRS
   fi
 fi
 
-# effective account: a rotating relay (TeamAI, else legacy teamclaude) wins over
-# the static CLI login in .claude.json when this session routes through it.
-# Where TeamAI is set up, teamclaude is retired: its leftover CLI is never run.
-# Deciding by endpoint instead would not work: both relays use port 3456, so every
-# moment TeamAI is down would run that CLI again on each render.
+# effective account: the TeamAI relay's last-used account wins over the static
+# CLI login in .claude.json when this session routes through it. It is read
+# from state files only. Relays whose account is only available by running
+# their CLI (e.g. teamclaude) are not queried: a render-time exec would trust
+# whatever interpreter that CLI's wrapper resolves from PATH or the cwd.
 ACCOUNT_VIA_PROXY=""
 if account_email=$(get_teamai_account) && [ -n "$account_email" ]; then
   ACCOUNT_VIA_PROXY="tai"
-elif [ ! -f "$(teamai_home)/config.json" ] && account_email=$(get_teamclaude_account); then
-  ACCOUNT_VIA_PROXY="tc"
 else
   account_email=$(get_account)
 fi

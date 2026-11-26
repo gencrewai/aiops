@@ -179,7 +179,7 @@ JSON 입력에서 사용 가능한 필드:
 
 > **로그인 계정(👤)** 은 stdin JSON에 포함되지 않습니다. 스크립트가 `~/.claude.json`(`CLAUDE_CONFIG_DIR`를 설정했으면 그 경로)의 `oauthAccount.emailAddress`를 직접 읽어 2줄 끝에 표시합니다. `--mask-account`(PowerShell은 `-maskAccount`) 플래그로 마스킹(`ma***@gmail.com`)할 수 있고, 계정 정보가 없으면 생략됩니다.
 >
-> **여러 계정을 돌려 쓰는 중계 서버**를 거치면 실제로 쓰인 계정이 `~/.claude.json`과 다를 수 있습니다. 세션의 `ANTHROPIC_BASE_URL`이 이 컴퓨터의 중계 포트를 가리키면 그 중계가 마지막에 쓴 계정을 보여 주고, 계정 뒤에 `⇄tai`(TeamAI) 또는 `⇄tc`(teamclaude)를 붙입니다. TeamAI는 자기 상태 파일만 읽고, teamclaude는 고정된 설치 위치의 실행 파일만 2초 제한으로 실행하고, 그 뒤에도 끝나지 않으면 1초 뒤 강제 종료합니다. Windows 판은 teamclaude만 지원합니다.
+> **TeamAI 중계**를 거치면 실제로 쓰인 계정이 `~/.claude.json`과 다를 수 있습니다. 세션의 `ANTHROPIC_BASE_URL`이 이 컴퓨터의 TeamAI 포트를 가리키고 TeamAI 서버가 살아 있으면, TeamAI가 마지막에 쓴 계정을 보여 주고 계정 뒤에 `⇄tai`를 붙입니다. TeamAI의 상태 파일만 읽고 TeamAI 실행 파일은 돌리지 않습니다. 계정을 알려면 CLI를 실행해야 하는 다른 중계(예: teamclaude)는 조회하지 않습니다. 렌더링 때마다 실행하면 그 CLI가 PATH나 현재 폴더에서 찾은 인터프리터를 그대로 믿게 되기 때문입니다. 이 표시는 bash 판에만 있습니다.
 >
 > **할 일 진행(✓)·서브에이전트 수(🤖)** 는 `~/.claude/tasks/<세션 ID>/`와 `~/.claude/todos/`의 파일 수로 셉니다. 그래서 🤖는 할 일 목록(TodoWrite) 파일을 남긴 서브에이전트만 셉니다. 할 일 목록 없이 끝난 서브에이전트는 빠질 수 있습니다.
 >
@@ -373,7 +373,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-unins
 ## 요구사항
 
 - **Claude Code**: `statusLine`을 지원하는 Claude Code CLI + bash(`.sh` 설치) 또는 PowerShell(Windows 설치)
-  - 세션 이름(🏷)과 TeamAI 계정 표시는 고정 위치의 python3(`/opt/homebrew/bin`, `/usr/local/bin`, CommandLineTools, macOS 외 `/usr/bin`)가 있을 때만 나옵니다. 없으면 그 항목만 빠집니다.
+  - 세션 이름(🏷)과 TeamAI 계정 표시(⇄tai)는 고정 위치의 python3(`/opt/homebrew/bin`, `/usr/local/bin`, CommandLineTools, macOS 외 `/usr/bin`)가 있을 때만 나옵니다. 없으면 그 항목만 빠집니다.
 - **Codex CLI**: `/statusline`을 지원하는 Codex CLI v0.1+
 - **Model/Profile Switcher**: Node.js 18+
 - **Terminal / tmux**: zsh 또는 bash, tmux 3.x 권장
