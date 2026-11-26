@@ -307,6 +307,21 @@ if (-not [string]::IsNullOrWhiteSpace($gitCommonDir)) {
   }
 }
 
+# session id — locates this session's task/todo stores; fall back to transcript filename
+$sessionId = Get-StringValue $data.session_id ''
+if (-not $sessionId) {
+  $tp = Get-StringValue $data.transcript_path ''
+  if ($tp) { $sessionId = [System.IO.Path]::GetFileNameWithoutExtension($tp) }
+}
+# trust boundary (same as the bash script): the id feeds wildcard paths and
+# filters below, so only a full UUID is accepted ("*" or "../x" would reach
+# other sessions' files)
+if ($sessionId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { $sessionId = '' }
+
+# account: the static CLI login in .claude.json. Relays whose live account is
+# only available by running their CLI (e.g. teamclaude) are not queried: a
+# render-time exec of an npm .cmd shim would run whatever node.exe it resolves
+# from PATH or the current directory.
 $accountEmail = Get-Account
 
 $fivePct = Clamp-Percent (Get-IntValue $rateLimits.five_hour.used_percentage 0)
@@ -370,12 +385,67 @@ $line1 = @(
 
 $accountDisplay = if ($maskAccount) { Mask-Email $accountEmail } else { $accountEmail }
 
+# --- subagent + task counts (session-scoped, from filesystem stores) ---
+$taskDone = 0
+$taskTotal = 0
+$subCount = 0
+if ($sessionId) {
+  $cfgBase = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
+  if (-not ((Test-Path (Join-Path $cfgBase 'todos')) -or (Test-Path (Join-Path $cfgBase 'tasks')))) {
+    $cfgBase = Join-Path $HOME '.claude'
+  }
+  # tasks: prefer the Task system (one json file per task), else main-agent TodoWrite
+  $taskDir = Join-Path (Join-Path $cfgBase 'tasks') $sessionId
+  if (Test-Path $taskDir) {
+    $taskFiles = @(Get-ChildItem -Path $taskDir -Filter '*.json' -File -ErrorAction SilentlyContinue)
+    $taskTotal = $taskFiles.Count
+    foreach ($tf in $taskFiles) {
+      if (Select-String -Path $tf.FullName -Pattern '"status"\s*:\s*"completed"' -Quiet -ErrorAction SilentlyContinue) {
+        $taskDone++
+      }
+    }
+  }
+  if ($taskTotal -eq 0) {
+    $todoMain = Join-Path (Join-Path $cfgBase 'todos') ('{0}-agent-{0}.json' -f $sessionId)
+    if (Test-Path $todoMain) {
+      $raw = Get-Content -Path $todoMain -Raw -ErrorAction SilentlyContinue
+      if ($raw) {
+        $taskTotal = ([regex]::Matches($raw, '"status"\s*:\s*"[a-z_]+"')).Count
+        $taskDone = ([regex]::Matches($raw, '"status"\s*:\s*"completed"')).Count
+      }
+    }
+  }
+  # subagents: this session's subagent TodoWrite files (agent id != session id)
+  $todosDir = Join-Path $cfgBase 'todos'
+  if (Test-Path $todosDir) {
+    foreach ($sf in @(Get-ChildItem -Path $todosDir -Filter ('{0}-agent-*.json' -f $sessionId) -File -ErrorAction SilentlyContinue)) {
+      $ag = ([System.IO.Path]::GetFileNameWithoutExtension($sf.Name)) -replace '.*-agent-', ''
+      if ($ag -ne $sessionId) { $subCount++ }
+    }
+  }
+}
+
+# task progress segment (only if this session has any task/todo)
+$taskSeg = ''
+if ($taskTotal -gt 0) {
+  $taskCol = if ($taskDone -ge $taskTotal) { $GREEN } else { $YELLOW }
+  $taskSeg = "${taskCol}$([char]0x2713)${taskDone}/${taskTotal}${RST}"
+}
+# subagent count segment (only if any subagent ran this session)
+$subSeg = ''
+if ($subCount -gt 0) {
+  $robot = [char]::ConvertFromUtf32(0x1F916)
+  $subSeg = "${CYAN}${robot}${subCount}${RST}"
+}
+
 $line2Parts = @(
   "${BLUE}${projectName}${RST}"
   "${YELLOW}${gitBranch}${RST} ${DIM}${gitHash}${RST}"
   "${MAGENTA}$([char]0x23F1) ${durDisplay}${RST}"
   "${GREEN}+${linesAdded}${RST} ${RED}-${linesRemoved}${RST}"
 )
+if ($taskSeg) { $line2Parts += $taskSeg }
+if ($subSeg) { $line2Parts += $subSeg }
 if ($accountEmail) {
   $person = [char]::ConvertFromUtf32(0x1F464)
   $line2Parts += "${person} ${WHITE}${accountDisplay}${RST}"

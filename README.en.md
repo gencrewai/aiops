@@ -10,31 +10,36 @@ Status bars for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) an
 
 ![Claude Code status bar](./assets/claude-statusline.png)
 
-Two modes and optional flags are available.
+Two modes and optional flags are available. The bash script (`.sh`) and the PowerShell script (`.ps1`) spell flags differently and default to different colors.
 
-| Option | Description |
-|--------|-------------|
-| (default) | Full mode (3-line), used bars |
-| `lite` | Lite mode (1-line) |
-| `--left` | Switch to remaining capacity bars |
-| `--soft` | Pastel ice-cream colors |
-| `--mask-account` | Mask the logged-in account email (`ma***@gmail.com`) |
+| bash (`.sh`) | PowerShell (`.ps1`) | Description |
+|--------|--------|-------------|
+| (default) | (default) | Full mode (3-4 lines), used bars |
+| `lite` | `lite` | Lite mode (1-line) |
+| `--left` | `-left` | Switch to remaining capacity bars |
+| (default) | `-soft` | Pastel ice-cream colors |
+| `--hard` | (default) | Classic ANSI colors |
+| `--mask-account` | `-maskAccount` | Mask the logged-in account email (`ma***@gmail.com`) |
 
-Options can be combined freely: `lite --left --soft`
+Options can be combined freely: `lite --left --hard` in bash, `lite -left -soft` in PowerShell.
 
-### Full Mode (3-line, default)
+### Full Mode (3-4 lines, default)
 
 ```text
 Opus 4.6 │ In:180K Out:54K │ 234K/200K │ $1.23
-my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12 │ 👤 you@example.com
+my-project │ main a1b2c3d │ ⏱ 12m30s │ +45 -12 │ ✓3/5 │ 🤖2 │ 👤 you@example.com
+🏷 my-laptop-ea │ 📋 Fix checkout screen │ ▶ Writing tests │ ✎ web-app
 ctx █████░░░ 58% │ 5h █████░░░ 72%(3h42m) │ 7d █████░░░ 65% │ cache 89%
 ```
 
 - `Line 1`: Model, input/output tokens, total tokens/context size, session cost
-- `Line 2`: Repository identity (origin `owner/repo`, with the folder appended as `owner/repo/folder` inside git worktrees or subdirectories; plain folder name outside git), git branch + commit hash, session duration, lines changed, logged-in account (👤 email)
-- `Line 3`: Usage bars (`ctx`, `5h`, `7d`), 5h reset remaining time, prompt cache hit rate
+- `Line 2`: Repository identity (origin `owner/repo`, with the folder appended as `owner/repo/folder` inside git worktrees or subdirectories; plain folder name outside git), git branch + commit hash, session duration, lines changed, task progress (✓done/total), subagent count (🤖), logged-in account (👤 email)
+- `Task line`: session name (🏷), session title (📋), current work (▶), repos edited this session (✎). Omitted when none of these is available, leaving 3 lines.
+- `Last line`: Usage bars (`ctx`, `5h`, `7d`), 5h reset remaining time, prompt cache hit rate
 
-With `--left` flag, Line 3 switches to remaining capacity:
+Task progress and the subagent count appear only when this session has tasks or subagents.
+
+With the `--left` flag, the last line switches to remaining capacity:
 
 ```text
 ctx left ███░░░░░ 42% │ 5h left ██░░░░░░ 28%(3h42m) │ 7d left ██░░░░░░ 35% │ cache 89%
@@ -48,9 +53,11 @@ my-project │ main │ Opus 4.6 │ 5h █████░░░ 72% │ 7d █�
 
 Folder, branch, model, 5-hour and 7-day usage only. Use `--left` to show remaining capacity instead.
 
-### --soft (Pastel Colors)
+### Color Themes (Pastel / Classic ANSI)
 
-Add the `--soft` flag for ice-cream pastel tone colors. Requires a truecolor (24-bit) terminal.
+The bash script uses ice-cream pastel tones by default, which need a truecolor (24-bit) terminal. Use `--hard` for classic ANSI colors on terminals without truecolor. Both themes use the `│` separator.
+
+The PowerShell script uses classic ANSI colors by default; add `-soft` for pastel tones, which also changes the separator from `|` to `·`. Example of PowerShell `-soft` output:
 
 ```text
 Opus 4.6 · In:180K Out:54K · 234K/200K · $1.23
@@ -58,7 +65,6 @@ my-project · main a1b2c3d · ⏱ 12m30s · +45 -12 · 👤 you@example.com
 ctx █████░░░ 58% · 5h █████░░░ 72%(3h42m) · 7d █████░░░ 65% · cache 89%
 ```
 
-The separator changes from `│` to `·` and colors become pastel tones.
 
 ### Color Coding
 
@@ -71,7 +77,7 @@ The separator changes from `│` to `·` and colors become pastel tones.
 ### Install
 
 ```bash
-# macOS / Linux / Git Bash - Full mode (3-line, default)
+# macOS / Linux / Git Bash - Full mode (3-4 lines, default)
 curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/install.sh | bash
 
 # macOS / Linux / Git Bash - Lite mode (1-line)
@@ -79,7 +85,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/install.sh | b
 ```
 
 ```powershell
-# Windows PowerShell - Full mode (3-line, default)
+# Windows PowerShell - Full mode (3-4 lines, default)
 $script = Join-Path $env:TEMP 'aiops-install.ps1'
 Invoke-WebRequest https://raw.githubusercontent.com/gencrewai/aiops/main/install.ps1 -OutFile $script
 powershell -NoProfile -ExecutionPolicy Bypass -File $script
@@ -114,7 +120,7 @@ Combine options freely:
 {
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/claude-statusline.sh lite --left --soft"
+    "command": "~/.claude/claude-statusline.sh lite --left --hard"
   }
 }
 ```
@@ -139,7 +145,7 @@ Combine options freely:
 {
   "statusLine": {
     "type": "command",
-    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/username/.claude/claude-statusline.ps1 lite --left --soft"
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/username/.claude/claude-statusline.ps1 lite -left -soft"
   }
 }
 ```
@@ -167,9 +173,18 @@ Available fields in the JSON input:
 - `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`
 - `cache_read_input_tokens`, `cache_creation_input_tokens`
 - `rate_limits.five_hour.used_percentage`, `rate_limits.seven_day.used_percentage`
+- `effort.level` (reasoning effort, Opus 4.5+, `high`/`medium`/`low`): shown after the model name with a 🧠 icon
 - `workspace.current_dir`, `cwd`
+- `model.id`: corrects the window to 1M when a 1M-context model (`[1m]`, fable/mythos) reports 200K
+- `session_id`, `transcript_path`, `session_name`: used for the task line, task progress and subagent count
 
-> **Logged-in account (👤)** is not part of the stdin JSON. The script reads `oauthAccount.emailAddress` directly from `~/.claude.json` (or `CLAUDE_CONFIG_DIR` if set) and appends it to Line 2. Use `--mask-account` to mask it (`ma***@gmail.com`); it is omitted when no account is found.
+> **Logged-in account (👤)** is not part of the stdin JSON. The script reads `oauthAccount.emailAddress` directly from `~/.claude.json` (or `CLAUDE_CONFIG_DIR` if set) and appends it to Line 2. Use `--mask-account` (`-maskAccount` in PowerShell) to mask it (`ma***@gmail.com`); it is omitted when no account is found.
+>
+> **Through the TeamAI relay** the account actually used can differ from `~/.claude.json`. When the session's `ANTHROPIC_BASE_URL` points at a TeamAI port on this machine and the TeamAI server is alive, the statusline shows the account TeamAI used last and appends `⇄tai`. Only TeamAI's state files are read; no TeamAI executable runs. Relays whose account is only available by running their CLI (e.g. teamclaude) are not queried, because a render-time exec would trust whatever interpreter that CLI resolves from PATH or the current directory. This is bash-only.
+>
+> **Task progress (✓) and subagent count (🤖)** are counted from files under `~/.claude/tasks/<session id>/` and `~/.claude/todos/`, so 🤖 counts only subagents that left a todo (TodoWrite) file; a subagent that finished without one may be missing.
+>
+> **The task line** reads the session transcript (`transcript_path`) and the per-session registry Claude Code keeps at `~/.claude/sessions/<pid>.json`. Only the session's own transcript under `~/.claude/projects/` is read. Title and current work come from curated summaries (session name, auto title, task wording), never raw prompts, and token-like values are masked as `■■■`. The task line is bash-only for now.
 
 ### Troubleshooting
 
@@ -360,6 +375,7 @@ curl -fsSL https://raw.githubusercontent.com/gencrewai/aiops/main/terminal-unins
 ## Requirements
 
 - **Claude Code**: Claude Code CLI with `statusLine` support, plus bash for `.sh` installs or PowerShell for Windows installs
+  - The session name (🏷) and TeamAI account need python3 at a fixed location (`/opt/homebrew/bin`, `/usr/local/bin`, CommandLineTools, or `/usr/bin` outside macOS); without it only those items are skipped.
 - **Codex CLI**: Codex CLI v0.1+ with `/statusline` support
 - **Model/Profile Switcher**: Node.js 18+
 - **Terminal / tmux**: zsh or bash, tmux 3.x recommended
