@@ -182,7 +182,7 @@ Available fields in the JSON input:
 >
 > **Through a multi-account relay** the account actually used can differ from `~/.claude.json`. When the session's `ANTHROPIC_BASE_URL` points at a relay port on this machine, the statusline shows the account that relay used last and appends `⇄tai` (TeamAI) or `⇄tc` (teamclaude). TeamAI is read from its state files only; teamclaude runs only from fixed install locations with a 2s timeout and is killed 1s later if it still has not exited. The Windows script supports teamclaude only.
 >
-> **Task progress (✓) and subagent count (🤖)** are counted from files under `~/.claude/tasks/<session id>/` and `~/.claude/todos/`.
+> **Task progress (✓) and subagent count (🤖)** are counted from files under `~/.claude/tasks/<session id>/` and `~/.claude/todos/`, so 🤖 counts only subagents that left a todo (TodoWrite) file; a subagent that finished without one may be missing.
 >
 > **The task line** reads the session transcript (`transcript_path`) and the per-session registry Claude Code keeps at `~/.claude/sessions/<pid>.json`. Only the session's own transcript under `~/.claude/projects/` is read. Title and current work come from curated summaries (session name, auto title, task wording), never raw prompts, and token-like values are masked as `■■■`. The task line is bash-only for now.
 

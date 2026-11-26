@@ -385,6 +385,10 @@ if (-not $sessionId) {
   $tp = Get-StringValue $data.transcript_path ''
   if ($tp) { $sessionId = [System.IO.Path]::GetFileNameWithoutExtension($tp) }
 }
+# trust boundary (same as the bash script): the id feeds wildcard paths and
+# filters below, so only a full UUID is accepted ("*" or "../x" would reach
+# other sessions' files)
+if ($sessionId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { $sessionId = '' }
 
 # effective account: teamclaude proxy (rotating) wins over the static CLI
 # login in .claude.json when this session routes through the proxy.
